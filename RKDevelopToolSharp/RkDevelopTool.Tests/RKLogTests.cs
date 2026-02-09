@@ -34,5 +34,30 @@ namespace RkDevelopTool.Tests
                 File.Delete(file);
             }
         }
+
+        [Fact]
+        public void TestSaveBuffer()
+        {
+            string logPath = Path.GetTempPath();
+            string fileName = Path.Combine(logPath, "test_buffer.bin");
+            RKLog log = new RKLog(logPath, "TestLog", true);
+            byte[] data = { 0x01, 0x02, 0x03 };
+            bool success = log.SaveBuffer(fileName, data);
+            Assert.True(success);
+            Assert.True(File.Exists(fileName));
+            byte[] readData = File.ReadAllBytes(fileName);
+            Assert.Equal(data, readData);
+            File.Delete(fileName);
+        }
+
+        [Fact]
+        public void TestPrintBuffer()
+        {
+            RKLog log = new RKLog(Path.GetTempPath(), "TestLog", true);
+            byte[] data = { 0x01, 0x02, 0x10, 0xFF };
+            log.PrintBuffer(out string output, data, 2);
+            string expected = "01 02 " + Environment.NewLine + "10 FF ";
+            Assert.Equal(expected, output);
+        }
     }
 }

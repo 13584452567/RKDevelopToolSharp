@@ -210,7 +210,7 @@ namespace RkDevelopTool.Core
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct RkBootHead
+    public unsafe struct RkBootHead
     {
         public uint Tag;
         public ushort Size;
@@ -229,17 +229,15 @@ namespace RkDevelopTool.Core
         public byte LoaderEntrySize;
         public byte SignFlag;
         public byte Rc4Flag;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 57)]
-        public byte[] Reserved;
+        public fixed byte Reserved[57];
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Unicode)]
-    public struct RkBootEntry
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct RkBootEntry
     {
         public byte Size;
         public RkBootEntryType Type;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 20)]
-        public string Name;
+        public fixed byte Name[20];
         public uint DataOffset;
         public uint DataSize;
         public uint DataDelay;
@@ -347,7 +345,7 @@ namespace RkDevelopTool.Core
             return -1;
         }
 
-        public bool GetEntryProperty(RkBootEntryType type, byte ucIndex, out uint dwSize, out uint dwDelay, out string name)
+        public unsafe bool GetEntryProperty(RkBootEntryType type, byte ucIndex, out uint dwSize, out uint dwDelay, out string name)
         {
             dwSize = 0;
             dwDelay = 0;
@@ -387,7 +385,7 @@ namespace RkDevelopTool.Core
 
             dwSize = entry.DataSize;
             dwDelay = entry.DataDelay;
-            name = entry.Name;
+            name = Marshal.PtrToStringAnsi((IntPtr)entry.Name) ?? string.Empty;
 
             return true;
         }
