@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="RKDevelopToolSharp/RkDevelopTool.Tests/RkDevelopTool.Tests.csproj" />
+  <Project Path="RKDevelopToolSharp/RkDevelopTool/RkDevelopTool.csproj" />
+</Solution>
