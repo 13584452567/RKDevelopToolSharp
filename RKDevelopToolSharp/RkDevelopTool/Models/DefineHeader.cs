@@ -109,6 +109,98 @@ namespace RkDevelopTool.Models
         public byte Second;
     }
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct MbrPartition
+    {
+        public byte BootInd;
+        public byte Head;
+        public byte Sector;
+        public byte Cyl;
+        public byte SysInd;
+        public byte EndHead;
+        public byte EndSector;
+        public byte EndCyl;
+        public uint StartSect;
+        public uint NrSects;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct LegacyMbr
+    {
+        public fixed byte BootCode[440];
+        public uint UniqueMbrSignature;
+        public ushort Unknown;
+        public MbrPartition PartitionRecord0;
+        public MbrPartition PartitionRecord1;
+        public MbrPartition PartitionRecord2;
+        public MbrPartition PartitionRecord3;
+        public ushort Signature;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct GptHeader
+    {
+        public ulong Signature;
+        public uint Revision;
+        public uint HeaderSize;
+        public uint HeaderCrc32;
+        public uint Reserved1;
+        public ulong MyLba;
+        public ulong AlternateLba;
+        public ulong FirstUsableLba;
+        public ulong LastUsableLba;
+        public Guid DiskGuid;
+        public ulong PartitionEntryLba;
+        public uint NumPartitionEntries;
+        public uint SizeofPartitionEntry;
+        public uint PartitionEntryArrayCrc32;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct GptEntry
+    {
+        public Guid PartitionTypeGuid;
+        public Guid UniquePartitionGuid;
+        public ulong StartingLba;
+        public ulong EndingLba;
+        public ulong Attributes;
+        public fixed ushort PartitionName[36]; // PARTNAME_SZ (72) / 2
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct RkBootHead
+    {
+        public uint Tag;
+        public ushort Size;
+        public uint Version;
+        public uint MergeVersion;
+        public RkTime ReleaseTime;
+        public RkDeviceType SupportChip;
+        public byte Entry471Count;
+        public uint Entry471Offset;
+        public byte Entry471Size;
+        public byte Entry472Count;
+        public uint Entry472Offset;
+        public byte Entry472Size;
+        public byte LoaderEntryCount;
+        public uint LoaderEntryOffset;
+        public byte LoaderEntrySize;
+        public byte SignFlag;
+        public byte Rc4Flag;
+        public fixed byte Reserved[57];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct RkBootEntry
+    {
+        public byte Size;
+        public RkBootEntryType Type;
+        public fixed byte Name[20];
+        public uint DataOffset;
+        public uint DataSize;
+        public uint DataDelay;
+    }
+
     [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
     public struct ConfigItem
     {

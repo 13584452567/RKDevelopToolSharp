@@ -48,5 +48,39 @@ namespace RkDevelopTool.Tests
             // But we can check if it returns false for null comm.
             Assert.False(device.SetObject(null, null, log));
         }
+
+        [Fact]
+        public void TestRKDevice_EraseEmmcByWriteLBA()
+        {
+            var mockComm = new MockRKComm();
+            var device = new RKDevice(new RkDeviceDesc());
+            device.SetObject(null, mockComm, null);
+
+            int ret = device.EraseEmmcByWriteLBA(100, 10);
+            Assert.Equal(RKCommConstants.ERR_SUCCESS, ret);
+            Assert.True(mockComm.WriteLbaCalled);
+            Assert.Equal(100u, mockComm.LastWritePos);
+            Assert.Equal(10u, mockComm.LastWriteCount);
+        }
+
+        [Fact]
+        public void TestRKDevice_WriteSparseLBA_InvalidHeader()
+        {
+            var mockComm = new MockRKComm();
+            var device = new RKDevice(new RkDeviceDesc());
+            device.SetObject(null, mockComm, null);
+
+            string tempFile = System.IO.Path.GetTempFileName();
+            try
+            {
+                System.IO.File.WriteAllBytes(tempFile, new byte[100]); // Garbled data
+                bool success = device.WriteSparseLBA(0, tempFile);
+                Assert.False(success);
+            }
+            finally
+            {
+                if (System.IO.File.Exists(tempFile)) System.IO.File.Delete(tempFile);
+            }
+        }
     }
 }
