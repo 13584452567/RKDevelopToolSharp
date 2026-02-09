@@ -2,111 +2,111 @@ using System.Runtime.InteropServices;
 
 namespace RkDevelopTool.Models
 {
-    public enum USB_ACCESS_TYPE
+    public enum UsbAccessType
     {
-        USB_BULK_READ = 0,
-        USB_BULK_WRITE,
-        USB_CONTROL,
+        BulkRead = 0,
+        BulkWrite,
+        Control,
     }
 
-    public enum TESTUNIT_SUBCODE : byte
+    public enum TestUnitSubCode : byte
     {
-        TU_NONE_SUBCODE = 0,
-        TU_ERASESYSTEM_SUBCODE = 0xFE,
-        TU_LOWERFORMAT_SUBCODE = 0xFD,
-        TU_ERASEUSERDATA_SUBCODE = 0xFB,
-        TU_GETUSERSECTOR_SUBCODE = 0xF9
+        None = 0,
+        EraseSystem = 0xFE,
+        LowerFormat = 0xFD,
+        EraseUserData = 0xFB,
+        GetUserSector = 0xF9
     }
 
-    public enum RESET_SUBCODE : byte
+    public enum ResetSubCode : byte
     {
-        RST_NONE_SUBCODE = 0,
-        RST_RESETMSC_SUBCODE,
-        RST_POWEROFF_SUBCODE,
-        RST_RESETMASKROM_SUBCODE,
-        RST_DISCONNECTRESET_SUBCODE
+        None = 0,
+        ResetMsc,
+        PowerOff,
+        ResetMaskRom,
+        DisconnectReset
     }
 
-    public enum RW_SUBCODE : byte
+    public enum RwSubCode : byte
     {
-        RWMETHOD_IMAGE = 0,
-        RWMETHOD_LBA
+        Image = 0,
+        Lba
     }
 
-    public enum USB_OPERATION_CODE : byte
+    public enum UsbOperationCode : byte
     {
-        TEST_UNIT_READY = 0,
-        READ_FLASH_ID = 0x01,
-        TEST_BAD_BLOCK = 0x03,
-        READ_SECTOR = 0x04,
-        WRITE_SECTOR = 0x05,
-        ERASE_NORMAL = 0x06,
-        ERASE_FORCE = 0x0B,
-        READ_LBA = 0x14,
-        WRITE_LBA = 0x15,
-        ERASE_SYSTEMDISK = 0x16,
-        READ_SDRAM = 0x17,
-        WRITE_SDRAM = 0x18,
-        EXECUTE_SDRAM = 0x19,
-        READ_FLASH_INFO = 0x1A,
-        READ_CHIP_INFO = 0x1B,
-        SET_RESET_FLAG = 0x1E,
-        WRITE_EFUSE = 0x1F,
-        READ_EFUSE = 0x20,
-        READ_SPI_FLASH = 0x21,
-        WRITE_SPI_FLASH = 0x22,
-        WRITE_NEW_EFUSE = 0x23,
-        READ_NEW_EFUSE = 0x24,
-        ERASE_LBA = 0x25,
-        CHANGE_STORAGE = 0x2A,
-        READ_STORAGE = 0x2B,
-        READ_CAPABILITY = 0xAA,
-        DEVICE_RESET = 0xFF
+        TestUnitReady = 0,
+        ReadFlashId = 0x01,
+        TestBadBlock = 0x03,
+        ReadSector = 0x04,
+        WriteSector = 0x05,
+        EraseNormal = 0x06,
+        EraseForce = 0x0B,
+        ReadLba = 0x14,
+        WriteLba = 0x15,
+        EraseSystemDisk = 0x16,
+        ReadSdram = 0x17,
+        WriteSdram = 0x18,
+        ExecuteSdram = 0x19,
+        ReadFlashInfo = 0x1A,
+        ReadChipInfo = 0x1B,
+        SetResetFlag = 0x1E,
+        WriteEfuse = 0x1F,
+        ReadEfuse = 0x20,
+        ReadSpiFlash = 0x21,
+        WriteSpiFlash = 0x22,
+        WriteNewEfuse = 0x23,
+        ReadNewEfuse = 0x24,
+        EraseLba = 0x25,
+        ChangeStorage = 0x2A,
+        ReadStorage = 0x2B,
+        ReadCapability = 0xAA,
+        DeviceReset = 0xFF
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CBWCB
+    public struct Cbwcb
     {
-        public byte ucOperCode;
-        public byte ucReserved;
-        public uint dwAddress;
-        public byte ucReserved2;
-        public ushort usLength;
+        public byte OperCode;
+        public byte Reserved;
+        public uint Address;
+        public byte Reserved2;
+        public ushort Length;
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)]
-        public byte[] ucReserved3;
+        public byte[] Reserved3;
 
-        public static CBWCB Create()
+        public static Cbwcb Create()
         {
-            return new CBWCB { ucReserved3 = new byte[7] };
+            return new Cbwcb { Reserved3 = new byte[7] };
         }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CBW
+    public struct Cbw
     {
-        public uint dwCBWSignature;
-        public uint dwCBWTag;
-        public uint dwCBWTransferLength;
-        public byte ucCBWFlags;
-        public byte ucCBWLUN;
-        public byte ucCBWCBLength;
-        public CBWCB cbwcb;
+        public uint Signature;
+        public uint Tag;
+        public uint TransferLength;
+        public byte Flags;
+        public byte Lun;
+        public byte CbLength;
+        public Cbwcb Cbwcb;
 
-        public static CBW Create()
+        public static Cbw Create()
         {
-            var cbw = new CBW();
-            cbw.cbwcb = CBWCB.Create();
+            var cbw = new Cbw();
+            cbw.Cbwcb = Cbwcb.Create();
             return cbw;
         }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CSW
+    public struct Csw
     {
-        public uint dwCSWSignature;
-        public uint dwCSWTag;
-        public uint dwCBWDataResidue;
-        public byte ucCSWStatus;
+        public uint Signature;
+        public uint Tag;
+        public uint DataResidue;
+        public byte Status;
     }
 
     public static class RKCommConstants

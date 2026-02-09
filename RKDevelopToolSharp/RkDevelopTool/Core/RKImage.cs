@@ -1,27 +1,28 @@
 using RkDevelopTool.Models;
 using RkDevelopTool.Utils;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 
 namespace RkDevelopTool.Core
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct STRUCT_RKIMAGE_HEAD
+    public unsafe struct RkImageHead
     {
-        public uint uiTag;
-        public ushort usSize;
-        public uint dwVersion;
-        public uint dwMergeVersion;
-        public STRUCT_RKTIME stReleaseTime;
-        public ENUM_RKDEVICE_TYPE emSupportChip;
-        public uint dwBootOffset;
-        public uint dwBootSize;
-        public uint dwFWOffset;
-        public uint dwFWSize;
-        public fixed byte reserved[61];
+        public uint Tag;
+        public ushort Size;
+        public uint Version;
+        public uint MergeVersion;
+        public RkTime ReleaseTime;
+        public RkDeviceType SupportChip;
+        public uint BootOffset;
+        public uint BootSize;
+        public uint FwOffset;
+        public uint FwSize;
+        public fixed byte Reserved[61];
     }
     public class RKImage
     {
-        private STRUCT_RKIMAGE_HEAD m_header;
+        private RkImageHead m_header;
         private string? m_filePath;
         private long m_fileSize;
         private byte[] m_md5 = new byte[32];
@@ -29,23 +30,23 @@ namespace RkDevelopTool.Core
         private int m_signMd5Size;
         private byte[] m_reserved = new byte[61];
 
-        public RKBoot? m_bootObject;
+        public RKBoot? BootObject;
 
-        public uint Version => m_header.dwVersion;
-        public uint MergeVersion => m_header.dwMergeVersion;
-        public STRUCT_RKTIME ReleaseTime => m_header.stReleaseTime;
-        public ENUM_RKDEVICE_TYPE SupportDevice => m_header.emSupportChip;
-        public ENUM_OS_TYPE OsType => (ENUM_OS_TYPE)BitConverter.ToUInt32(m_reserved, 4);
+        public uint Version => m_header.Version;
+        public uint MergeVersion => m_header.MergeVersion;
+        public RkTime ReleaseTime => m_header.ReleaseTime;
+        public RkDeviceType SupportDevice => m_header.SupportChip;
+        public OsType OsType => (OsType)BitConverter.ToUInt32(m_reserved, 4);
         public ushort BackupSize => BitConverter.ToUInt16(m_reserved, 12);
-        public uint BootOffset => m_header.dwBootOffset;
-        public uint BootSize => m_header.dwBootSize;
-        public uint FWOffset => m_header.dwFWOffset;
-        public long FWSize { get; private set; }
+        public uint BootOffset => m_header.BootOffset;
+        public uint BootSize => m_header.BootSize;
+        public uint FwOffset => m_header.FwOffset;
+        public long FwSize { get; private set; }
         public long ImageSize => m_fileSize;
         public bool SignFlag { get; private set; }
 
         public RKImage() { }
-        public bool LoadImage(string path)
+        public unsafe bool LoadImage(string path)
         {
             try
             {
@@ -60,37 +61,30 @@ namespace RkDevelopTool.Core
                 {
                     if (!bOnlyBootFile)
                     {
-                        byte[] headBytes = new byte[Marshal.SizeOf<STRUCT_RKIMAGE_HEAD>()];
+                        byte[] headBytes = new byte[Marshal.SizeOf<RkImageHead>()];
                         if (fs.Read(headBytes, 0, headBytes.Length) != headBytes.Length) return false;
 
-                        GCHandle handle = GCHandle.Alloc(headBytes, GCHandleType.Pinned);
-                        m_header = Marshal.PtrToStructure<STRUCT_RKIMAGE_HEAD>(handle.AddrOfPinnedObject());
-                        handle.Free();
+                        m_header = MemoryMarshal.Read<RkImageHead>(headBytes);
 
-                        if (m_header.uiTag != 0x57464B52) return false; // "RKFW"
+                        if (m_header.Tag != 0x57464B52) return false; // "RKFW"
 
                         long ulFwSize;
-                        unsafe
+                        ReadOnlySpan<byte> reservedSpan = MemoryMarshal.CreateReadOnlySpan(ref m_header.Reserved[0], 61);
+                        if (reservedSpan[14] == (byte)'H' && reservedSpan[15] == (byte)'I')
                         {
-                            fixed (byte* pReserved = m_header.reserved)
-                            {
-                                if (pReserved[14] == 'H' && pReserved[15] == 'I')
-                                {
-                                    ulFwSize = (long)(*((uint*)(pReserved + 16)));
-                                    ulFwSize <<= 32;
-                                    ulFwSize += m_header.dwFWOffset;
-                                    ulFwSize += m_header.dwFWSize;
-                                }
-                                else
-                                {
-                                    ulFwSize = (long)m_header.dwFWOffset + m_header.dwFWSize;
-                                }
-
-                                for (int i = 0; i < 61; i++) m_reserved[i] = pReserved[i];
-                            }
+                            ulFwSize = (long)BinaryPrimitives.ReadUInt32LittleEndian(reservedSpan.Slice(16, 4));
+                            ulFwSize <<= 32;
+                            ulFwSize += m_header.FwOffset;
+                            ulFwSize += m_header.FwSize;
+                        }
+                        else
+                        {
+                            ulFwSize = (long)m_header.FwOffset + m_header.FwSize;
                         }
 
-                        FWSize = ulFwSize - m_header.dwFWOffset;
+                        reservedSpan.CopyTo(m_reserved);
+
+                        FwSize = ulFwSize - m_header.FwOffset;
                         int nMd5DataSize = (int)(m_fileSize - ulFwSize);
                         if (nMd5DataSize >= 160)
                         {
@@ -108,24 +102,24 @@ namespace RkDevelopTool.Core
                     }
                     else
                     {
-                        m_header.dwBootOffset = 0;
-                        m_header.dwBootSize = (uint)m_fileSize;
-                        m_header.dwFWOffset = 0;
-                        m_header.dwFWSize = 0;
+                        m_header.BootOffset = 0;
+                        m_header.BootSize = (uint)m_fileSize;
+                        m_header.FwOffset = 0;
+                        m_header.FwSize = 0;
                     }
                     
-                    byte[] bootData = new byte[m_header.dwBootSize];
-                    fs.Seek(m_header.dwBootOffset, SeekOrigin.Begin);
+                    byte[] bootData = new byte[m_header.BootSize];
+                    fs.Seek(m_header.BootOffset, SeekOrigin.Begin);
                     fs.ReadExactly(bootData);
 
                     bool bCheck;
-                    m_bootObject = new RKBoot(bootData, out bCheck);
+                    BootObject = new RKBoot(bootData, out bCheck);
                     if (!bCheck) return false;
 
                     if (bOnlyBootFile)
                     {
-                        m_header.emSupportChip = m_bootObject.SupportDevice;
-                        byte[] osTypeBytes = BitConverter.GetBytes((uint)ENUM_OS_TYPE.RK_OS);
+                        m_header.SupportChip = BootObject.SupportDevice;
+                        byte[] osTypeBytes = BitConverter.GetBytes((uint)OsType.RkOs);
                         Array.Copy(osTypeBytes, 0, m_reserved, 4, 4);
                     }
                 }
@@ -192,15 +186,15 @@ namespace RkDevelopTool.Core
 
         public bool SaveFWFile(string filename)
         {
-            if (m_filePath == null || FWSize == 0) return false;
+            if (m_filePath == null || FwSize == 0) return false;
             try
             {
                 using (FileStream fsSource = new FileStream(m_filePath, FileMode.Open, FileAccess.Read))
                 using (FileStream fsDest = new FileStream(filename, FileMode.Create, FileAccess.Write))
                 {
-                    fsSource.Seek(FWOffset, SeekOrigin.Begin);
+                    fsSource.Seek(FwOffset, SeekOrigin.Begin);
                     byte[] buffer = new byte[1024];
-                    long remaining = FWSize;
+                    long remaining = FwSize;
                     while (remaining > 0)
                     {
                         int read = fsSource.Read(buffer, 0, (int)Math.Min(1024, remaining));
@@ -216,56 +210,56 @@ namespace RkDevelopTool.Core
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct STRUCT_RKBOOT_HEAD
+    public struct RkBootHead
     {
-        public uint uiTag;
-        public ushort usSize;
-        public uint dwVersion;
-        public uint dwMergeVersion;
-        public STRUCT_RKTIME stReleaseTime;
-        public ENUM_RKDEVICE_TYPE emSupportChip;
-        public byte uc471EntryCount;
-        public uint dw471EntryOffset;
-        public byte uc471EntrySize;
-        public byte uc472EntryCount;
-        public uint dw472EntryOffset;
-        public byte uc472EntrySize;
-        public byte ucLoaderEntryCount;
-        public uint dwLoaderEntryOffset;
-        public byte ucLoaderEntrySize;
-        public byte ucSignFlag;
-        public byte ucRc4Flag;
+        public uint Tag;
+        public ushort Size;
+        public uint Version;
+        public uint MergeVersion;
+        public RkTime ReleaseTime;
+        public RkDeviceType SupportChip;
+        public byte Entry471Count;
+        public uint Entry471Offset;
+        public byte Entry471Size;
+        public byte Entry472Count;
+        public uint Entry472Offset;
+        public byte Entry472Size;
+        public byte LoaderEntryCount;
+        public uint LoaderEntryOffset;
+        public byte LoaderEntrySize;
+        public byte SignFlag;
+        public byte Rc4Flag;
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 57)]
-        public byte[] reserved;
+        public byte[] Reserved;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Unicode)]
-    public struct STRUCT_RKBOOT_ENTRY
+    public struct RkBootEntry
     {
-        public byte ucSize;
-        public ENUM_RKBOOTENTRY emType;
+        public byte Size;
+        public RkBootEntryType Type;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 20)]
-        public string szName;
-        public uint dwDataOffset;
-        public uint dwDataSize;
-        public uint dwDataDelay;
+        public string Name;
+        public uint DataOffset;
+        public uint DataSize;
+        public uint DataDelay;
     }
 
     public class RKBoot
     {
         private byte[] m_bootData;
-        private STRUCT_RKBOOT_HEAD m_header;
+        private RkBootHead m_header;
 
-        public bool Rc4DisableFlag => m_header.ucRc4Flag != 0;
-        public bool SignFlag => m_header.ucSignFlag == (byte)'S';
-        public uint Version => m_header.dwVersion;
-        public uint MergeVersion => m_header.dwMergeVersion;
-        public STRUCT_RKTIME ReleaseTime => m_header.stReleaseTime;
-        public ENUM_RKDEVICE_TYPE SupportDevice => m_header.emSupportChip;
+        public bool Rc4DisableFlag => m_header.Rc4Flag != 0;
+        public bool SignFlag => m_header.SignFlag == (byte)'S';
+        public uint Version => m_header.Version;
+        public uint MergeVersion => m_header.MergeVersion;
+        public RkTime ReleaseTime => m_header.ReleaseTime;
+        public RkDeviceType SupportDevice => m_header.SupportChip;
 
-        public byte Entry471Count => m_header.uc471EntryCount;
-        public byte Entry472Count => m_header.uc472EntryCount;
-        public byte EntryLoaderCount => m_header.ucLoaderEntryCount;
+        public byte Entry471Count => m_header.Entry471Count;
+        public byte Entry472Count => m_header.Entry472Count;
+        public byte EntryLoaderCount => m_header.LoaderEntryCount;
 
         public RKBoot(byte[] bootData, out bool bCheck)
         {
@@ -282,17 +276,15 @@ namespace RkDevelopTool.Core
         private bool Initialize(out bool crcCheckResult)
         {
             crcCheckResult = false;
-            if (m_bootData.Length < Marshal.SizeOf<STRUCT_RKBOOT_HEAD>())
+            if (m_bootData.Length < Marshal.SizeOf<RkBootHead>())
                 return false;
 
             crcCheckResult = CrcCheck();
             if (!crcCheckResult) return true; // Construction continues but bCheck will be false
 
-            GCHandle handle = GCHandle.Alloc(m_bootData, GCHandleType.Pinned);
-            m_header = Marshal.PtrToStructure<STRUCT_RKBOOT_HEAD>(handle.AddrOfPinnedObject());
-            handle.Free();
+            m_header = MemoryMarshal.Read<RkBootHead>(m_bootData);
 
-            if (m_header.uiTag != 0x544F4F42 && m_header.uiTag != 0x2052444C)
+            if (m_header.Tag != 0x544F4F42 && m_header.Tag != 0x2052444C)
                 return false;
 
             return true;
@@ -302,11 +294,11 @@ namespace RkDevelopTool.Core
         {
             if (m_bootData.Length < 4) return false;
             uint oldCrc = BitConverter.ToUInt32(m_bootData, m_bootData.Length - 4);
-            uint newCrc = CRCUtils.CRC_32(m_bootData, (uint)m_bootData.Length - 4);
+            uint newCrc = CRCUtils.CRC_32(m_bootData.AsSpan(0, m_bootData.Length - 4));
             return oldCrc == newCrc;
         }
 
-        public bool SaveEntryFile(ENUM_RKBOOTENTRY type, byte ucIndex, string fileName)
+        public bool SaveEntryFile(RkBootEntryType type, byte ucIndex, string fileName)
         {
             byte[]? data = GetEntryData(type, ucIndex);
             if (data == null) return false;
@@ -318,27 +310,27 @@ namespace RkDevelopTool.Core
             catch { return false; }
         }
 
-        public int GetIndexByName(ENUM_RKBOOTENTRY type, string name)
+        public int GetIndexByName(RkBootEntryType type, string name)
         {
             uint dwOffset;
             byte ucCount, ucSize;
 
             switch (type)
             {
-                case ENUM_RKBOOTENTRY.ENTRY471:
-                    dwOffset = m_header.dw471EntryOffset;
-                    ucCount = m_header.uc471EntryCount;
-                    ucSize = m_header.uc471EntrySize;
+                case RkBootEntryType.Entry471:
+                    dwOffset = m_header.Entry471Offset;
+                    ucCount = m_header.Entry471Count;
+                    ucSize = m_header.Entry471Size;
                     break;
-                case ENUM_RKBOOTENTRY.ENTRY472:
-                    dwOffset = m_header.dw472EntryOffset;
-                    ucCount = m_header.uc472EntryCount;
-                    ucSize = m_header.uc472EntrySize;
+                case RkBootEntryType.Entry472:
+                    dwOffset = m_header.Entry472Offset;
+                    ucCount = m_header.Entry472Count;
+                    ucSize = m_header.Entry472Size;
                     break;
-                case ENUM_RKBOOTENTRY.ENTRYLOADER:
-                    dwOffset = m_header.dwLoaderEntryOffset;
-                    ucCount = m_header.ucLoaderEntryCount;
-                    ucSize = m_header.ucLoaderEntrySize;
+                case RkBootEntryType.EntryLoader:
+                    dwOffset = m_header.LoaderEntryOffset;
+                    ucCount = m_header.LoaderEntryCount;
+                    ucSize = m_header.LoaderEntrySize;
                     break;
                 default:
                     return -1;
@@ -355,7 +347,7 @@ namespace RkDevelopTool.Core
             return -1;
         }
 
-        public bool GetEntryProperty(ENUM_RKBOOTENTRY type, byte ucIndex, out uint dwSize, out uint dwDelay, out string name)
+        public bool GetEntryProperty(RkBootEntryType type, byte ucIndex, out uint dwSize, out uint dwDelay, out string name)
         {
             dwSize = 0;
             dwDelay = 0;
@@ -366,20 +358,20 @@ namespace RkDevelopTool.Core
 
             switch (type)
             {
-                case ENUM_RKBOOTENTRY.ENTRY471:
-                    dwOffset = m_header.dw471EntryOffset;
-                    ucCount = m_header.uc471EntryCount;
-                    ucSize = m_header.uc471EntrySize;
+                case RkBootEntryType.Entry471:
+                    dwOffset = m_header.Entry471Offset;
+                    ucCount = m_header.Entry471Count;
+                    ucSize = m_header.Entry471Size;
                     break;
-                case ENUM_RKBOOTENTRY.ENTRY472:
-                    dwOffset = m_header.dw472EntryOffset;
-                    ucCount = m_header.uc472EntryCount;
-                    ucSize = m_header.uc472EntrySize;
+                case RkBootEntryType.Entry472:
+                    dwOffset = m_header.Entry472Offset;
+                    ucCount = m_header.Entry472Count;
+                    ucSize = m_header.Entry472Size;
                     break;
-                case ENUM_RKBOOTENTRY.ENTRYLOADER:
-                    dwOffset = m_header.dwLoaderEntryOffset;
-                    ucCount = m_header.ucLoaderEntryCount;
-                    ucSize = m_header.ucLoaderEntrySize;
+                case RkBootEntryType.EntryLoader:
+                    dwOffset = m_header.LoaderEntryOffset;
+                    ucCount = m_header.LoaderEntryCount;
+                    ucSize = m_header.LoaderEntrySize;
                     break;
                 default:
                     return false;
@@ -391,18 +383,16 @@ namespace RkDevelopTool.Core
             byte[] entryBytes = new byte[ucSize];
             Array.Copy(m_bootData, entryPos, entryBytes, 0, ucSize);
 
-            GCHandle handle = GCHandle.Alloc(entryBytes, GCHandleType.Pinned);
-            var entry = Marshal.PtrToStructure<STRUCT_RKBOOT_ENTRY>(handle.AddrOfPinnedObject());
-            handle.Free();
+            var entry = MemoryMarshal.Read<RkBootEntry>(entryBytes);
 
-            dwSize = entry.dwDataSize;
-            dwDelay = entry.dwDataDelay;
-            name = entry.szName;
+            dwSize = entry.DataSize;
+            dwDelay = entry.DataDelay;
+            name = entry.Name;
 
             return true;
         }
 
-        public byte[]? GetEntryData(ENUM_RKBOOTENTRY type, byte ucIndex)
+        public byte[]? GetEntryData(RkBootEntryType type, byte ucIndex)
         {
             uint dwSize, dwDelay;
             string name;
@@ -412,25 +402,23 @@ namespace RkDevelopTool.Core
             uint dwOffset;
             switch (type)
             {
-                case ENUM_RKBOOTENTRY.ENTRY471: dwOffset = m_header.dw471EntryOffset; break;
-                case ENUM_RKBOOTENTRY.ENTRY472: dwOffset = m_header.dw472EntryOffset; break;
-                case ENUM_RKBOOTENTRY.ENTRYLOADER: dwOffset = m_header.dwLoaderEntryOffset; break;
+                case RkBootEntryType.Entry471: dwOffset = m_header.Entry471Offset; break;
+                case RkBootEntryType.Entry472: dwOffset = m_header.Entry472Offset; break;
+                case RkBootEntryType.EntryLoader: dwOffset = m_header.LoaderEntryOffset; break;
                 default: return null;
             }
 
-            int entryPos = (int)(dwOffset + (uint)m_header.ucLoaderEntrySize * ucIndex); // Assuming size is correct for type
+            int entryPos = (int)(dwOffset + (uint)m_header.LoaderEntrySize * ucIndex); // Assuming size is correct for type
             // Actually need to re-read entry for data offset
-            byte ucSize = (type == ENUM_RKBOOTENTRY.ENTRY471) ? m_header.uc471EntrySize : (type == ENUM_RKBOOTENTRY.ENTRY472 ? m_header.uc472EntrySize : m_header.ucLoaderEntrySize);
+            byte ucSize = (type == RkBootEntryType.Entry471) ? m_header.Entry471Size : (type == RkBootEntryType.Entry472 ? m_header.Entry472Size : m_header.LoaderEntrySize);
             entryPos = (int)(dwOffset + (uint)ucSize * ucIndex);
 
             byte[] entryBytes = new byte[ucSize];
             Array.Copy(m_bootData, entryPos, entryBytes, 0, ucSize);
-            GCHandle handle = GCHandle.Alloc(entryBytes, GCHandleType.Pinned);
-            var entry = Marshal.PtrToStructure<STRUCT_RKBOOT_ENTRY>(handle.AddrOfPinnedObject());
-            handle.Free();
+            var entry = MemoryMarshal.Read<RkBootEntry>(entryBytes);
 
-            byte[] data = new byte[entry.dwDataSize];
-            Array.Copy(m_bootData, (int)entry.dwDataOffset, data, 0, (int)entry.dwDataSize);
+            byte[] data = new byte[entry.DataSize];
+            Array.Copy(m_bootData, (int)entry.DataOffset, data, 0, (int)entry.DataSize);
             return data;
         }
     }

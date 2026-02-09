@@ -3,254 +3,254 @@ using System.Runtime.InteropServices;
 namespace RkDevelopTool.Models
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
-    public unsafe struct STRUCT_FLASH_INFO
+    public unsafe struct FlashInfo
     {
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
-        public string szManufacturerName;
-        public uint uiFlashSize;
-        public ushort usBlockSize;
-        public uint uiPageSize;
-        public uint uiSectorPerBlock;
-        public fixed byte blockState[50];
-        public uint uiBlockNum;
-        public byte bECCBits;
-        public byte bAccessTime;
-        public byte bFlashCS;
-        public ushort usValidSecPerBlock;
-        public ushort usPhyBlokcPerIDB;
-        public uint uiSecNumPerIDB;
+        public string ManufacturerName;
+        public uint FlashSize;
+        public ushort BlockSize;
+        public uint PageSize;
+        public uint SectorPerBlock;
+        public fixed byte BlockState[50];
+        public uint BlockNum;
+        public byte EccBits;
+        public byte AccessTime;
+        public byte FlashCs;
+        public ushort ValidSecPerBlock;
+        public ushort PhyBlockPerIdb;
+        public uint SecNumPerIdb;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct STRUCT_FLASHINFO_CMD
+    public unsafe struct FlashInfoCmd
     {
-        public uint uiFlashSize;
-        public ushort usBlockSize;
-        public byte bPageSize;
-        public byte bECCBits;
-        public byte bAccessTime;
-        public byte bManufCode;
-        public byte bFlashCS;
-        public fixed byte reserved[501];
+        public uint FlashSize;
+        public ushort BlockSize;
+        public byte PageSize;
+        public byte EccBits;
+        public byte AccessTime;
+        public byte ManufCode;
+        public byte FlashCs;
+        public fixed byte Reserved[501];
     }
 
-    public enum ENUM_RKDEVICE_TYPE : int
+    public enum RkDeviceType : int
     {
-        RKNONE_DEVICE = 0,
-        RK27_DEVICE = 0x10,
-        RKCAYMAN_DEVICE,
-        RK28_DEVICE = 0x20,
-        RK281X_DEVICE,
-        RKPANDA_DEVICE,
-        RKNANO_DEVICE = 0x30,
-        RKSMART_DEVICE,
-        RKCROWN_DEVICE = 0x40,
-        RK29_DEVICE = 0x50,
-        RK292X_DEVICE,
-        RK30_DEVICE = 0x60,
-        RK30B_DEVICE,
-        RK31_DEVICE = 0x70,
-        RK32_DEVICE = 0x80
+        None = 0,
+        Rk27 = 0x10,
+        RkCayman,
+        Rk28 = 0x20,
+        Rk281x,
+        RkPanda,
+        RkNano = 0x30,
+        RkSmart,
+        RkCrown = 0x40,
+        Rk29 = 0x50,
+        Rk292x,
+        Rk30 = 0x60,
+        Rk30b,
+        Rk31 = 0x70,
+        Rk32 = 0x80
     }
 
-    public enum ENUM_OS_TYPE : int
+    public enum OsType : int
     {
-        RK_OS = 0,
-        ANDROID_OS = 0x1
+        RkOs = 0,
+        AndroidOs = 0x1
     }
 
     [Flags]
-    public enum ENUM_RKUSB_TYPE : int
+    public enum RkUsbType : int
     {
-        RKUSB_NONE = 0x0,
-        RKUSB_MASKROM = 0x01,
-        RKUSB_LOADER = 0x02,
-        RKUSB_MSC = 0x04
+        None = 0x0,
+        MaskRom = 0x01,
+        Loader = 0x02,
+        Msc = 0x04
     }
 
-    public enum ENUM_RKBOOTENTRY : int
+    public enum RkBootEntryType : int
     {
-        ENTRY471 = 1,
-        ENTRY472 = 2,
-        ENTRYLOADER = 4
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct sparse_header
-    {
-        public uint magic;          /* 0xed26ff3a */
-        public ushort major_version;
-        public ushort minor_version;
-        public ushort file_hdr_sz;
-        public ushort chunk_hdr_sz;
-        public uint blk_sz;
-        public uint total_blks;
-        public uint total_chunks;
-        public uint image_checksum;
+        Entry471 = 1,
+        Entry472 = 2,
+        EntryLoader = 4
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct chunk_header
+    public struct SparseHeader
     {
-        public ushort chunk_type;
-        public ushort reserved1;
-        public uint chunk_sz;
-        public uint total_sz;
+        public uint Magic;          /* 0xed26ff3a */
+        public ushort MajorVersion;
+        public ushort MinorVersion;
+        public ushort FileHeaderSize;
+        public ushort ChunkHeaderSize;
+        public uint BlockSize;
+        public uint TotalBlocks;
+        public uint TotalChunks;
+        public uint ImageChecksum;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct STRUCT_RKTIME
+    public struct ChunkHeader
     {
-        public ushort usYear;
-        public byte ucMonth;
-        public byte ucDay;
-        public byte ucHour;
-        public byte ucMinute;
-        public byte ucSecond;
+        public ushort ChunkType;
+        public ushort Reserved1;
+        public uint ChunkSize;
+        public uint TotalSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct RkTime
+    {
+        public ushort Year;
+        public byte Month;
+        public byte Day;
+        public byte Hour;
+        public byte Minute;
+        public byte Second;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
-    public struct STRUCT_CONFIG_ITEM
+    public struct ConfigItem
     {
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 20)]
-        public string szItemName;
+        public string ItemName;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
-        public string szItemValue;
+        public string ItemValue;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
-    public struct STRUCT_PARAM_ITEM
+    public struct ParamItem
     {
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
-        public string szItemName;
-        public uint uiItemOffset;
-        public uint uiItemSize;
+        public string ItemName;
+        public uint ItemOffset;
+        public uint ItemSize;
     }
 
-    public class STRUCT_RKDEVICE_DESC
+    public class RkDeviceDesc
     {
-        public ushort usVid;
-        public ushort usPid;
-        public ushort usbcdUsb;
-        public uint uiLocationID;
-        public ENUM_RKUSB_TYPE emUsbType;
-        public ENUM_RKDEVICE_TYPE emDeviceType;
-        public IntPtr pUsbHandle; // For LibUsbDotNet, this might be a handle or object
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct RK28_IDB_SEC0
-    {
-        public uint dwTag;
-        public fixed byte reserved[4];
-        public uint uiRc4Flag;
-        public ushort usBootCode1Offset;
-        public ushort usBootCode2Offset;
-        public fixed byte reserved1[490];
-        public ushort usBootDataSize;
-        public ushort usBootCodeSize;
-        public ushort usCrc;
+        public ushort Vid { get; set; }
+        public ushort Pid { get; set; }
+        public ushort UsbcdUsb { get; set; }
+        public uint LocationId { get; set; }
+        public RkUsbType UsbType { get; set; }
+        public RkDeviceType DeviceType { get; set; }
+        public IntPtr UsbHandle { get; set; } // For LibUsbDotNet, this might be a handle or object
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct RK28_IDB_SEC1
+    public unsafe struct Rk28IdbSec0
     {
-        public ushort usSysReservedBlock;
-        public ushort usDisk0Size;
-        public ushort usDisk1Size;
-        public ushort usDisk2Size;
-        public ushort usDisk3Size;
-        public uint uiChipTag;
-        public uint uiMachineId;
-        public ushort usLoaderYear;
-        public ushort usLoaderDate;
-        public ushort usLoaderVer;
-        public ushort usLastLoaderVer;
-        public ushort usReadWriteTimes;
-        public uint dwFwVer;
-        public ushort usMachineInfoLen;
-        public fixed byte ucMachineInfo[30];
-        public ushort usManufactoryInfoLen;
-        public fixed byte ucManufactoryInfo[30];
-        public ushort usFlashInfoOffset;
-        public ushort usFlashInfoLen;
-        public fixed byte reserved[384];
-        public uint uiFlashSize;
-        public byte reserved1;
-        public byte bAccessTime;
-        public ushort usBlockSize;
-        public byte bPageSize;
-        public byte bECCBits;
-        public fixed byte reserved2[8];
-        public ushort usIdBlock0;
-        public ushort usIdBlock1;
-        public ushort usIdBlock2;
-        public ushort usIdBlock3;
-        public ushort usIdBlock4;
+        public uint Tag;
+        public fixed byte Reserved[4];
+        public uint Rc4Flag;
+        public ushort BootCode1Offset;
+        public ushort BootCode2Offset;
+        public fixed byte Reserved1[490];
+        public ushort BootDataSize;
+        public ushort BootCodeSize;
+        public ushort Crc;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct RK28_IDB_SEC2
+    public unsafe struct Rk28IdbSec1
     {
-        public ushort usInfoSize;
-        public fixed byte bChipInfo[16];
-        public fixed byte reserved[473];
-        public fixed byte szVcTag[3];
-        public ushort usSec0Crc;
-        public ushort usSec1Crc;
-        public uint uiBootCodeCrc;
-        public ushort usSec3CustomDataOffset;
-        public ushort usSec3CustomDataSize;
-        public fixed byte szCrcTag[4];
-        public ushort usSec3Crc;
+        public ushort SysReservedBlock;
+        public ushort Disk0Size;
+        public ushort Disk1Size;
+        public ushort Disk2Size;
+        public ushort Disk3Size;
+        public uint ChipTag;
+        public uint MachineId;
+        public ushort LoaderYear;
+        public ushort LoaderDate;
+        public ushort LoaderVer;
+        public ushort LastLoaderVer;
+        public ushort ReadWriteTimes;
+        public uint FwVer;
+        public ushort MachineInfoLen;
+        public fixed byte MachineInfo[30];
+        public ushort ManufactoryInfoLen;
+        public fixed byte ManufactoryInfo[30];
+        public ushort FlashInfoOffset;
+        public ushort FlashInfoLen;
+        public fixed byte Reserved[384];
+        public uint FlashSize;
+        public byte Reserved1;
+        public byte AccessTime;
+        public ushort BlockSize;
+        public byte PageSize;
+        public byte EccBits;
+        public fixed byte Reserved2[8];
+        public ushort IdBlock0;
+        public ushort IdBlock1;
+        public ushort IdBlock2;
+        public ushort IdBlock3;
+        public ushort IdBlock4;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct RK28_IDB_SEC3
+    public unsafe struct Rk28IdbSec2
     {
-        public ushort usSNSize;
-        public fixed byte sn[60];
-        public fixed byte reserved[382];
-        public byte wifiSize;
-        public fixed byte wifiAddr[6];
-        public byte imeiSize;
-        public fixed byte imei[15];
-        public byte uidSize;
-        public fixed byte uid[30];
-        public byte blueToothSize;
-        public fixed byte blueToothAddr[6];
-        public byte macSize;
-        public fixed byte macAddr[6];
+        public ushort InfoSize;
+        public fixed byte ChipInfo[16];
+        public fixed byte Reserved[473];
+        public fixed byte VcTag[3];
+        public ushort Sec0Crc;
+        public ushort Sec1Crc;
+        public uint BootCodeCrc;
+        public ushort Sec3CustomDataOffset;
+        public ushort Sec3CustomDataSize;
+        public fixed byte CrcTag[4];
+        public ushort Sec3Crc;
     }
-
-    public enum ENUM_PROGRESS_PROMPT
-    {
-        TESTDEVICE_PROGRESS,
-        DOWNLOADIMAGE_PROGRESS,
-        CHECKIMAGE_PROGRESS,
-        TAGBADBLOCK_PROGRESS,
-        TESTBLOCK_PROGRESS,
-        ERASEFLASH_PROGRESS,
-        ERASESYSTEM_PROGRESS,
-        LOWERFORMAT_PROGRESS,
-        ERASEUSERDATA_PROGRESS
-    }
-
-    public enum ENUM_CALL_STEP
-    {
-        CALL_FIRST,
-        CALL_MIDDLE,
-        CALL_LAST
-    }
-
-    public delegate void ProgressPromptCB(uint deviceLayer, ENUM_PROGRESS_PROMPT promptID, long totalValue, long currentValue, ENUM_CALL_STEP emCall);
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct STRUCT_DEVICE_CONFIG
+    public unsafe struct Rk28IdbSec3
     {
-        public ushort usVid;
-        public ushort usPid;
-        public ENUM_RKDEVICE_TYPE emDeviceType;
+        public ushort SnSize;
+        public fixed byte Sn[60];
+        public fixed byte Reserved[382];
+        public byte WifiSize;
+        public fixed byte WifiAddr[6];
+        public byte ImeiSize;
+        public fixed byte Imei[15];
+        public byte UidSize;
+        public fixed byte Uid[30];
+        public byte BlueToothSize;
+        public fixed byte BlueToothAddr[6];
+        public byte MacSize;
+        public fixed byte MacAddr[6];
+    }
+
+    public enum ProgressPrompt
+    {
+        TestDevice,
+        DownloadImage,
+        CheckImage,
+        TagBadBlock,
+        TestBlock,
+        EraseFlash,
+        EraseSystem,
+        LowerFormat,
+        EraseUserData
+    }
+
+    public enum CallStep
+    {
+        First,
+        Middle,
+        Last
+    }
+
+    public delegate void ProgressPromptCallback(uint deviceLayer, ProgressPrompt promptId, long totalValue, long currentValue, CallStep step);
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct DeviceConfig
+    {
+        public ushort Vid;
+        public ushort Pid;
+        public RkDeviceType DeviceType;
     }
 
     public static class Constants

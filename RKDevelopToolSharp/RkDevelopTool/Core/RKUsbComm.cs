@@ -16,19 +16,19 @@ namespace RkDevelopTool.Core
         private UsbEndpointReader? m_reader;
         private int m_interfaceNum = -1;
 
-        public RKUsbComm(STRUCT_RKDEVICE_DESC devDesc, RKLog? pLog, out bool bRet) : base(pLog)
+        public RKUsbComm(RkDeviceDesc deviceDesc, RKLog? log, out bool result) : base(log)
         {
-            bRet = InitializeUsb(devDesc);
+            result = InitializeUsb(deviceDesc);
         }
 
         /// <summary>
         /// 初始化 USB 连接，查找并打开设备，声明接口并开启端点。
         /// </summary>
-        public bool InitializeUsb(STRUCT_RKDEVICE_DESC devDesc)
+        public bool InitializeUsb(RkDeviceDesc deviceDesc)
         {
-            m_deviceDesc = devDesc;
+            m_deviceDesc = deviceDesc;
             
-            var finder = new UsbDeviceFinder(devDesc.usVid, devDesc.usPid);
+            var finder = new UsbDeviceFinder(deviceDesc.Vid, deviceDesc.Pid);
             m_usbDevice = UsbDevice.OpenUsbDevice(finder);
 
             if (m_usbDevice == null)
@@ -73,10 +73,10 @@ namespace RkDevelopTool.Core
             UninitializeUsb();
         }
 
-        public override bool Reset_Usb_Config(STRUCT_RKDEVICE_DESC devDesc)
+        public override bool Reset_Usb_Config(RkDeviceDesc deviceDesc)
         {
             UninitializeUsb();
-            return InitializeUsb(devDesc);
+            return InitializeUsb(deviceDesc);
         }
 
         public override bool Reset_Usb_Device()
@@ -89,622 +89,674 @@ namespace RkDevelopTool.Core
         /// <summary>
         /// 从 USB 设备读取指定长度的数据。
         /// </summary>
-        public override bool RKU_Read(byte[] lpBuffer, uint dwSize)
+        public override bool Read(Memory<byte> buffer)
         {
             int transferred;
-            ErrorCode ec = m_reader!.Read(lpBuffer, 5000, out transferred);
-            if (ec != ErrorCode.None || transferred != dwSize)
+            byte[] arr;
+            int offset = 0;
+            if (MemoryMarshal.TryGetArray(buffer, out ArraySegment<byte> segment))
             {
-                m_log?.Record($"Error:RKU_Read failed, ec={ec}, size={dwSize}, read={transferred}");
+                arr = segment.Array!;
+                offset = segment.Offset;
+            }
+            else
+            {
+                arr = new byte[buffer.Length];
+            }
+
+            ErrorCode ec = m_reader!.Read(arr, offset, buffer.Length, 5000, out transferred);
+            if (ec != ErrorCode.None || transferred != buffer.Length)
+            {
+                m_log?.Record($"Error:Read failed, ec={ec}, size={buffer.Length}, read={transferred}");
                 return false;
             }
+
+            if (segment.Array == null)
+            {
+                arr.AsSpan().CopyTo(buffer.Span);
+            }
+
             return true;
         }
 
         /// <summary>
         /// 从 USB 设备读取数据，但不强制检查读取长度是否等于预期长度。
         /// </summary>
-        public uint RKU_Read_EX(byte[] lpBuffer, uint dwSize)
+        public uint ReadEx(Memory<byte> buffer)
         {
             int transferred;
-            ErrorCode ec = m_reader!.Read(lpBuffer, 5000, out transferred);
+            byte[] arr;
+            int offset = 0;
+            if (MemoryMarshal.TryGetArray(buffer, out ArraySegment<byte> segment))
+            {
+                arr = segment.Array!;
+                offset = segment.Offset;
+            }
+            else
+            {
+                arr = new byte[buffer.Length];
+            }
+
+            ErrorCode ec = m_reader!.Read(arr, offset, buffer.Length, 5000, out transferred);
             if (ec != ErrorCode.None)
             {
-                m_log?.Record($"Error:RKU_Read_EX failed, ec={ec}, size={dwSize}");
+                m_log?.Record($"Error:ReadEx failed, ec={ec}, size={buffer.Length}");
                 return 0;
             }
+
+            if (segment.Array == null)
+            {
+                arr.AsSpan(0, transferred).CopyTo(buffer.Span);
+            }
+
             return (uint)transferred;
         }
 
         /// <summary>
         /// 向 USB 设备写入指定长度的数据。
         /// </summary>
-        public override bool RKU_Write(byte[] lpBuffer, uint dwSize)
+        public override bool Write(ReadOnlyMemory<byte> buffer)
         {
             int transferred;
-            ErrorCode ec = m_writer!.Write(lpBuffer, 5000, out transferred);
-            if (ec != ErrorCode.None || transferred != dwSize)
+            byte[] arr;
+            int offset = 0;
+            if (MemoryMarshal.TryGetArray(buffer, out ArraySegment<byte> segment))
             {
-                m_log?.Record($"Error:RKU_Write failed, ec={ec}, size={dwSize}, write={transferred}");
+                arr = segment.Array!;
+                offset = segment.Offset;
+            }
+            else
+            {
+                arr = buffer.ToArray();
+            }
+
+            ErrorCode ec = m_writer!.Write(arr, offset, buffer.Length, 5000, out transferred);
+            if (ec != ErrorCode.None || transferred != buffer.Length)
+            {
+                m_log?.Record($"Error:Write failed, ec={ec}, size={buffer.Length}, write={transferred}");
                 return false;
             }
             return true;
         }
 
-        private uint MakeCBWTag()
+        private uint MakeCbwTag()
         {
-            Random rng = new Random();
-            byte[] bytes = new byte[4];
-            rng.NextBytes(bytes);
-            return BitConverter.ToUInt32(bytes, 0);
+            uint tag = 0;
+            Span<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref tag, 1));
+            Random.Shared.NextBytes(bytes);
+            return tag;
         }
 
         /// <summary>
-        /// 根据操作码初始化命令块包装 (CBW)。
+        /// 根据操作码初始化命令块包装 (Cbw)。
         /// </summary>
-        private void InitializeCBW(ref CBW pCBW, USB_OPERATION_CODE code)
+        private void InitializeCbw(ref Cbw cbw, UsbOperationCode code)
         {
-            pCBW.dwCBWSignature = RKCommConstants.CBW_SIGN;
-            pCBW.dwCBWTag = MakeCBWTag();
-            pCBW.cbwcb.ucOperCode = (byte)code;
+            cbw.Signature = RKCommConstants.CBW_SIGN;
+            cbw.Tag = MakeCbwTag();
+            cbw.Cbwcb.OperCode = (byte)code;
 
             switch (code)
             {
-                case USB_OPERATION_CODE.TEST_UNIT_READY:
-                case USB_OPERATION_CODE.READ_FLASH_ID:
-                case USB_OPERATION_CODE.READ_FLASH_INFO:
-                case USB_OPERATION_CODE.READ_CHIP_INFO:
-                case USB_OPERATION_CODE.READ_EFUSE:
-                case USB_OPERATION_CODE.READ_CAPABILITY:
-                case USB_OPERATION_CODE.READ_STORAGE:
-                    pCBW.ucCBWFlags = RKCommConstants.DIRECTION_IN;
-                    pCBW.ucCBWCBLength = 0x06;
+                case UsbOperationCode.TestUnitReady:
+                case UsbOperationCode.ReadFlashId:
+                case UsbOperationCode.ReadFlashInfo:
+                case UsbOperationCode.ReadChipInfo:
+                case UsbOperationCode.ReadEfuse:
+                case UsbOperationCode.ReadCapability:
+                case UsbOperationCode.ReadStorage:
+                    cbw.Flags = RKCommConstants.DIRECTION_IN;
+                    cbw.CbLength = 0x06;
                     break;
-                case USB_OPERATION_CODE.DEVICE_RESET:
-                case USB_OPERATION_CODE.ERASE_SYSTEMDISK:
-                case USB_OPERATION_CODE.SET_RESET_FLAG:
-                case USB_OPERATION_CODE.CHANGE_STORAGE:
-                    pCBW.ucCBWFlags = RKCommConstants.DIRECTION_OUT;
-                    pCBW.ucCBWCBLength = 0x06;
+                case UsbOperationCode.DeviceReset:
+                case UsbOperationCode.EraseSystemDisk:
+                case UsbOperationCode.SetResetFlag:
+                case UsbOperationCode.ChangeStorage:
+                    cbw.Flags = RKCommConstants.DIRECTION_OUT;
+                    cbw.CbLength = 0x06;
                     break;
-                case USB_OPERATION_CODE.TEST_BAD_BLOCK:
-                case USB_OPERATION_CODE.READ_SECTOR:
-                case USB_OPERATION_CODE.READ_LBA:
-                case USB_OPERATION_CODE.READ_SDRAM:
-                case USB_OPERATION_CODE.READ_SPI_FLASH:
-                case USB_OPERATION_CODE.READ_NEW_EFUSE:
-                    pCBW.ucCBWFlags = RKCommConstants.DIRECTION_IN;
-                    pCBW.ucCBWCBLength = 0x0a;
+                case UsbOperationCode.TestBadBlock:
+                case UsbOperationCode.ReadSector:
+                case UsbOperationCode.ReadLba:
+                case UsbOperationCode.ReadSdram:
+                case UsbOperationCode.ReadSpiFlash:
+                case UsbOperationCode.ReadNewEfuse:
+                    cbw.Flags = RKCommConstants.DIRECTION_IN;
+                    cbw.CbLength = 0x0a;
                     break;
-                case USB_OPERATION_CODE.WRITE_SECTOR:
-                case USB_OPERATION_CODE.WRITE_LBA:
-                case USB_OPERATION_CODE.WRITE_SDRAM:
-                case USB_OPERATION_CODE.EXECUTE_SDRAM:
-                case USB_OPERATION_CODE.ERASE_NORMAL:
-                case USB_OPERATION_CODE.ERASE_FORCE:
-                case USB_OPERATION_CODE.WRITE_EFUSE:
-                case USB_OPERATION_CODE.WRITE_SPI_FLASH:
-                case USB_OPERATION_CODE.WRITE_NEW_EFUSE:
-                case USB_OPERATION_CODE.ERASE_LBA:
-                    pCBW.ucCBWFlags = RKCommConstants.DIRECTION_OUT;
-                    pCBW.ucCBWCBLength = 0x0a;
+                case UsbOperationCode.WriteSector:
+                case UsbOperationCode.WriteLba:
+                case UsbOperationCode.WriteSdram:
+                case UsbOperationCode.ExecuteSdram:
+                case UsbOperationCode.EraseNormal:
+                case UsbOperationCode.EraseForce:
+                case UsbOperationCode.WriteEfuse:
+                case UsbOperationCode.WriteSpiFlash:
+                case UsbOperationCode.WriteNewEfuse:
+                case UsbOperationCode.EraseLba:
+                    cbw.Flags = RKCommConstants.DIRECTION_OUT;
+                    cbw.CbLength = 0x0a;
                     break;
             }
         }
 
-        private byte[] StructToBytes<T>(T str) where T : struct
+        private bool UfiCheckSign(Cbw cbw, Csw csw)
         {
-            int size = Marshal.SizeOf(str);
-            byte[] arr = new byte[size];
-            IntPtr ptr = Marshal.AllocHGlobal(size);
-            Marshal.StructureToPtr(str, ptr, true);
-            Marshal.Copy(ptr, arr, 0, size);
-            Marshal.FreeHGlobal(ptr);
-            return arr;
+            return csw.Signature == RKCommConstants.CSW_SIGN && csw.Tag == cbw.Tag;
         }
 
-        private T BytesToStruct<T>(byte[] arr) where T : struct
+        private bool RkuClearBuffer(Cbw cbw, ref Csw csw)
         {
-            T str = new T();
-            int size = Marshal.SizeOf(str);
-            IntPtr ptr = Marshal.AllocHGlobal(size);
-            Marshal.Copy(arr, 0, ptr, size);
-            str = Marshal.PtrToStructure<T>(ptr);
-            Marshal.FreeHGlobal(ptr);
-            return str;
-        }
-
-        private bool UFI_CHECK_SIGN(CBW cbw, CSW csw)
-        {
-            return csw.dwCSWSignature == RKCommConstants.CSW_SIGN && csw.dwCSWTag == cbw.dwCBWTag;
-        }
-
-        private bool RKU_ClearBuffer(CBW cbw, ref CSW csw)
-        {
-            uint dwTotalRead = 0;
-            int iTryCount = 3;
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
+            uint totalRead = 0;
+            int tryCount = 3;
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
             do
             {
-                uint dwReadBytes = RKU_Read_EX(cswBytes, (uint)cswBytes.Length);
-                if (dwReadBytes == cswBytes.Length)
+                uint readBytes = ReadEx(cswBytes);
+                if (readBytes == (uint)cswBytes.Length)
                 {
-                    csw = BytesToStruct<CSW>(cswBytes);
-                    if (UFI_CHECK_SIGN(cbw, csw))
+                    csw = MemoryMarshal.Read<Csw>(cswBytes);
+                    if (UfiCheckSign(cbw, csw))
                         return true;
                 }
                 else
                 {
-                    iTryCount--;
+                    tryCount--;
                     Thread.Sleep(3000);
                 }
-                dwTotalRead += dwReadBytes;
-                if (dwTotalRead >= RKCommConstants.MAX_CLEAR_LEN)
+                totalRead += readBytes;
+                if (totalRead >= RKCommConstants.MAX_CLEAR_LEN)
                     break;
-            } while (iTryCount > 0);
+            } while (tryCount > 0);
             return false;
         }
 
-        public override int RKU_ReadChipInfo(byte[] lpBuffer)
+        public override int ReadChipInfo(Memory<byte> buffer)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
             {
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
             }
 
-            CBW cbw = CBW.Create();
-            CSW csw = new CSW();
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.ReadChipInfo);
+            cbw.TransferLength = 16;
 
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.READ_CHIP_INFO);
-            cbw.dwCBWTransferLength = 16;
-
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            if (!RKU_Read(lpBuffer, 16))
+            if (!Read(buffer[..16]))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
                 return RKCommConstants.ERR_CMD_NOTMATCH;
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_ReadFlashID(byte[] lpBuffer)
+        public override int ReadFlashID(Memory<byte> buffer)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.READ_FLASH_ID);
-            cbw.dwCBWTransferLength = 5;
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.ReadFlashId);
+            cbw.TransferLength = 5;
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            if (!RKU_Read(lpBuffer, 5))
+            if (!Read(buffer[..5]))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
                 return RKCommConstants.ERR_CMD_NOTMATCH;
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_ReadFlashInfo(byte[] lpBuffer, out uint puiRead)
+        public override int ReadFlashInfo(Memory<byte> buffer, out uint bytesRead)
         {
-            puiRead = 0;
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            bytesRead = 0;
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.READ_FLASH_INFO);
-            cbw.dwCBWTransferLength = 11;
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.ReadFlashInfo);
+            cbw.TransferLength = 11;
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
             byte[] infoBuffer = new byte[512];
-            uint dwRead = RKU_Read_EX(infoBuffer, 512);
-            if (dwRead < 11 || dwRead > 512)
+            uint readCount = ReadEx(infoBuffer);
+            if (readCount < 11 || readCount > 512)
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            Array.Copy(infoBuffer, lpBuffer, Math.Min(lpBuffer.Length, (int)dwRead));
-            puiRead = dwRead;
+            infoBuffer.AsSpan(0, (int)readCount).CopyTo(buffer.Span);
+            bytesRead = readCount;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
                 return RKCommConstants.ERR_CMD_NOTMATCH;
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_ReadCapability(byte[] lpBuffer)
+        public override int ReadCapability(Memory<byte> buffer)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.READ_CAPABILITY);
-            cbw.dwCBWTransferLength = 8;
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.ReadCapability);
+            cbw.TransferLength = 8;
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            uint dwRead = RKU_Read_EX(cswBytes, (uint)cswBytes.Length);
-            if (dwRead != 8)
+            byte[] tempBuffer = new byte[8];
+            uint readCount = ReadEx(tempBuffer);
+            if (readCount != 8)
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            Array.Copy(cswBytes, lpBuffer, 8);
+            tempBuffer.AsSpan().CopyTo(buffer.Span);
 
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
                 return RKCommConstants.ERR_CMD_NOTMATCH;
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_ReadLBA(uint dwPos, uint dwCount, byte[] lpBuffer, RW_SUBCODE bySubCode = RW_SUBCODE.RWMETHOD_IMAGE)
+        public override int ReadLBA(uint pos, uint count, Memory<byte> buffer, RwSubCode subCode = RwSubCode.Image)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.READ_LBA);
-            cbw.dwCBWTransferLength = dwCount * 512;
-            cbw.cbwcb.dwAddress = EndianUtils.LtoB32(dwPos);
-            cbw.cbwcb.usLength = EndianUtils.LtoB16((ushort)dwCount);
-            cbw.cbwcb.ucReserved = (byte)bySubCode;
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.ReadLba);
+            cbw.TransferLength = count * 512;
+            cbw.Cbwcb.Address = EndianUtils.LtoB32(pos);
+            cbw.Cbwcb.Length = EndianUtils.LtoB16((ushort)count);
+            cbw.Cbwcb.Reserved = (byte)subCode;
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            if (!RKU_Read(lpBuffer, dwCount * 512))
+            if (!Read(buffer[..(int)(count * 512)]))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
                 return RKCommConstants.ERR_CMD_NOTMATCH;
 
-            if (csw.ucCSWStatus == 1)
+            if (csw.Status == 1)
                 return RKCommConstants.ERR_FAILED;
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_WriteLBA(uint dwPos, uint dwCount, byte[] lpBuffer, RW_SUBCODE bySubCode = RW_SUBCODE.RWMETHOD_IMAGE)
+        public override int WriteLBA(uint pos, uint count, ReadOnlyMemory<byte> buffer, RwSubCode subCode = RwSubCode.Image)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.WRITE_LBA);
-            uint dwTotal = dwCount * 512;
-            cbw.dwCBWTransferLength = dwTotal;
-            cbw.cbwcb.dwAddress = EndianUtils.LtoB32(dwPos);
-            cbw.cbwcb.usLength = EndianUtils.LtoB16((ushort)dwCount);
-            cbw.cbwcb.ucReserved = (byte)bySubCode;
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.WriteLba);
+            uint total = count * 512;
+            cbw.TransferLength = total;
+            cbw.Cbwcb.Address = EndianUtils.LtoB32(pos);
+            cbw.Cbwcb.Length = EndianUtils.LtoB16((ushort)count);
+            cbw.Cbwcb.Reserved = (byte)subCode;
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            if (!RKU_Write(lpBuffer, dwTotal))
+            if (!Write(buffer[..(int)total]))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
                 return RKCommConstants.ERR_CMD_NOTMATCH;
 
-            if (csw.ucCSWStatus == 1)
+            if (csw.Status == 1)
                 return RKCommConstants.ERR_FAILED;
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_WriteSector(uint dwPos, uint dwCount, byte[] lpBuffer)
+        public override int WriteSector(uint pos, uint count, ReadOnlyMemory<byte> buffer)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            if (dwCount > 32)
+            if (count > 32)
                 return RKCommConstants.ERR_CROSS_BORDER;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.READ_SECTOR);
-            uint dwTotal = dwCount * 528;
-            cbw.dwCBWTransferLength = dwTotal;
-            cbw.cbwcb.dwAddress = EndianUtils.LtoB32(dwPos);
-            cbw.cbwcb.usLength = EndianUtils.LtoB16((ushort)dwCount);
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.ReadSector);
+            uint total = count * 528;
+            cbw.TransferLength = total;
+            cbw.Cbwcb.Address = EndianUtils.LtoB32(pos);
+            cbw.Cbwcb.Length = EndianUtils.LtoB16((ushort)count);
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            if (!RKU_Write(lpBuffer, dwTotal))
+            if (!Write(buffer[..(int)total]))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
                 return RKCommConstants.ERR_CMD_NOTMATCH;
 
-            if (csw.ucCSWStatus == 1)
+            if (csw.Status == 1)
                 return RKCommConstants.ERR_FAILED;
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_EraseLBA(uint dwPos, uint dwCount)
+        public override int EraseLBA(uint pos, uint count)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.ERASE_LBA);
-            cbw.cbwcb.dwAddress = EndianUtils.LtoB32(dwPos);
-            cbw.cbwcb.usLength = EndianUtils.LtoB16((ushort)dwCount);
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.EraseLba);
+            cbw.Cbwcb.Address = EndianUtils.LtoB32(pos);
+            cbw.Cbwcb.Length = EndianUtils.LtoB16((ushort)count);
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
                 return RKCommConstants.ERR_CMD_NOTMATCH;
 
-            if (csw.ucCSWStatus == 1)
+            if (csw.Status == 1)
                 return RKCommConstants.ERR_FAILED;
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_ResetDevice(RESET_SUBCODE bySubCode = RESET_SUBCODE.RST_NONE_SUBCODE)
+        public override int ResetDevice(ResetSubCode subCode = ResetSubCode.None)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.DEVICE_RESET);
-            cbw.cbwcb.ucReserved = (byte)bySubCode;
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.DeviceReset);
+            cbw.Cbwcb.Reserved = (byte)subCode;
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
             {
-                if (!RKU_ClearBuffer(cbw, ref csw))
+                if (!RkuClearBuffer(cbw, ref csw))
                     return RKCommConstants.ERR_CMD_NOTMATCH;
             }
 
-            if (csw.ucCSWStatus == 1)
+            if (csw.Status == 1)
                 return RKCommConstants.ERR_FAILED;
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_ChangeStorage(byte storage)
+        public override int ChangeStorage(byte storage)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.CHANGE_STORAGE);
-            cbw.cbwcb.ucReserved = storage;
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.ChangeStorage);
+            cbw.Cbwcb.Reserved = storage;
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
             {
-                if (!RKU_ClearBuffer(cbw, ref csw))
+                if (!RkuClearBuffer(cbw, ref csw))
                     return RKCommConstants.ERR_CMD_NOTMATCH;
             }
 
-            if (csw.ucCSWStatus == 1)
+            if (csw.Status == 1)
                 return RKCommConstants.ERR_FAILED;
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_ReadStorage(byte[] storage)
+        public override int ReadStorage(Memory<byte> storage)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.READ_STORAGE);
-            cbw.dwCBWTransferLength = 4;
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.ReadStorage);
+            cbw.TransferLength = 4;
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
             byte[] bitsBuffer = new byte[4];
-            uint dwRead = RKU_Read_EX(bitsBuffer, 4);
-            if (dwRead != 4)
+            uint readCount = ReadEx(bitsBuffer);
+            if (readCount != 4)
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            uint storage_bits = BitConverter.ToUInt32(bitsBuffer, 0);
+            uint storageBits = BitConverter.ToUInt32(bitsBuffer);
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
                 return RKCommConstants.ERR_CMD_NOTMATCH;
 
-            storage[0] = 255;
+            storage.Span[0] = 255;
             for (byte i = 0; i < 32; i++)
             {
-                if ((storage_bits & (1u << i)) != 0)
+                if ((storageBits & (1u << i)) != 0)
                 {
-                    storage[0] = i;
+                    storage.Span[0] = i;
                     break;
                 }
             }
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_TestDeviceReady(out uint dwTotal, out uint dwCurrent, TESTUNIT_SUBCODE bySubCode = TESTUNIT_SUBCODE.TU_NONE_SUBCODE)
+        public override int TestDeviceReady(out uint total, out uint current, TestUnitSubCode subCode = TestUnitSubCode.None)
         {
-            dwTotal = 0;
-            dwCurrent = 0;
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            total = 0;
+            current = 0;
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, USB_OPERATION_CODE.TEST_UNIT_READY);
-            cbw.cbwcb.ucReserved = (byte)bySubCode;
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, UsbOperationCode.TestUnitReady);
+            cbw.Cbwcb.Reserved = (byte)subCode;
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
             {
-                if (!RKU_ClearBuffer(cbw, ref csw))
+                if (!RkuClearBuffer(cbw, ref csw))
                     return RKCommConstants.ERR_CMD_NOTMATCH;
             }
 
-            dwCurrent = (csw.dwCBWDataResidue >> 16);
-            dwTotal = (csw.dwCBWDataResidue & 0x0000FFFF);
+            current = (csw.DataResidue >> 16);
+            total = (csw.DataResidue & 0x0000FFFF);
 
-            dwTotal = EndianUtils.BtoL16((ushort)dwTotal);
-            dwCurrent = EndianUtils.BtoL16((ushort)dwCurrent);
+            total = EndianUtils.BtoL16((ushort)total);
+            current = EndianUtils.BtoL16((ushort)current);
 
-            if (csw.ucCSWStatus == 1)
+            if (csw.Status == 1)
                 return RKCommConstants.ERR_DEVICE_UNREADY;
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_DeviceRequest(uint dwRequest, byte[] lpBuffer, uint dwDataSize)
+        public override int DeviceRequest(uint requestCode, ReadOnlyMemory<byte> buffer)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            if (dwRequest != 0x0471 && dwRequest != 0x0472)
+            if (requestCode != 0x0471 && requestCode != 0x0472)
                 return RKCommConstants.ERR_REQUEST_NOT_SUPPORT;
 
-            bool bSendPendPacket = false;
-            switch (dwDataSize % 4096)
+            uint dataSize = (uint)buffer.Length;
+            bool sendPendPacket = false;
+            switch (dataSize % 4096)
             {
                 case 4095:
-                    dwDataSize++;
+                    dataSize++;
                     break;
                 case 4094:
-                    bSendPendPacket = true;
+                    sendPendPacket = true;
                     break;
             }
 
-            byte[] pData = new byte[dwDataSize + 2];
-            Array.Copy(lpBuffer, pData, lpBuffer.Length);
+            byte[] data = new byte[dataSize + 2];
+            buffer.Span.CopyTo(data);
 
-            ushort crcValue = CRCUtils.CRC_CCITT(pData, dwDataSize);
-            pData[dwDataSize] = (byte)((crcValue & 0xff00) >> 8);
-            pData[dwDataSize + 1] = (byte)(crcValue & 0x00ff);
-            uint totalDataSize = dwDataSize + 2;
+            ushort crcValue = CRCUtils.CRC_CCITT(data.AsSpan(0, (int)dataSize));
+            data[dataSize] = (byte)((crcValue & 0xff00) >> 8);
+            data[dataSize + 1] = (byte)(crcValue & 0x00ff);
+            uint totalDataSize = dataSize + 2;
 
-            uint dwTotalSended = 0;
+            uint totalSent = 0;
             if (m_usbDevice == null) return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            while (dwTotalSended < totalDataSize)
+            while (totalSent < totalDataSize)
             {
-                uint nSendBytes = Math.Min(totalDataSize - dwTotalSended, 4096);
-                var setup = new UsbSetupPacket(0x40, 0xC, 0, (short)dwRequest, (short)nSendBytes);
+                uint sendBytes = Math.Min(totalDataSize - totalSent, 4096);
+                var setup = new UsbSetupPacket(0x40, 0xC, 0, (short)requestCode, (short)sendBytes);
                 int transferred;
-                byte[] tempBuf = new byte[nSendBytes];
-                Array.Copy(pData, (int)dwTotalSended, tempBuf, 0, (int)nSendBytes);
-                bool success = m_usbDevice.ControlTransfer(ref setup, tempBuf, (int)nSendBytes, out transferred);
+                byte[] tempBuf = new byte[sendBytes];
+                Array.Copy(data, (int)totalSent, tempBuf, 0, (int)sendBytes);
+                bool success = m_usbDevice.ControlTransfer(ref setup, tempBuf, (int)sendBytes, out transferred);
 
-                if (!success || transferred != (int)nSendBytes)
+                if (!success || transferred != (int)sendBytes)
                     return RKCommConstants.ERR_REQUEST_FAIL;
 
-                dwTotalSended += nSendBytes;
+                totalSent += sendBytes;
             }
 
-            if (bSendPendPacket)
+            if (sendPendPacket)
             {
-                byte[] ucFillByte = new byte[1] { 0 };
-                var setup = new UsbSetupPacket(0x40, 0xC, 0, (short)dwRequest, 1);
+                byte[] fillByte = new byte[1] { 0 };
+                var setup = new UsbSetupPacket(0x40, 0xC, 0, (short)requestCode, 1);
                 int transferred;
-                m_usbDevice.ControlTransfer(ref setup, ucFillByte, 1, out transferred);
+                m_usbDevice.ControlTransfer(ref setup, fillByte, 1, out transferred);
             }
 
             return RKCommConstants.ERR_SUCCESS;
         }
 
-        public override int RKU_EraseBlock(byte ucFlashCS, uint dwPos, uint dwCount, byte ucEraseType)
+        public override int EraseBlock(byte flashCs, uint pos, uint count, byte eraseType)
         {
-            if (m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_LOADER && m_deviceDesc.emUsbType != ENUM_RKUSB_TYPE.RKUSB_MASKROM)
+            if (m_deviceDesc.UsbType != RkUsbType.Loader && m_deviceDesc.UsbType != RkUsbType.MaskRom)
                 return RKCommConstants.ERR_DEVICE_NOT_SUPPORT;
 
-            if (dwCount > RKCommConstants.MAX_ERASE_BLOCKS)
+            if (count > RKCommConstants.MAX_ERASE_BLOCKS)
                 return RKCommConstants.ERR_CROSS_BORDER;
 
-            CBW cbw = CBW.Create();
-            InitializeCBW(ref cbw, (USB_OPERATION_CODE)ucEraseType);
-            cbw.ucCBWLUN = ucFlashCS;
-            cbw.cbwcb.dwAddress = EndianUtils.LtoB32(dwPos);
-            cbw.cbwcb.usLength = EndianUtils.LtoB16((ushort)dwCount);
+            Cbw cbw = Cbw.Create();
+            InitializeCbw(ref cbw, (UsbOperationCode)eraseType);
+            cbw.Lun = flashCs;
+            cbw.Cbwcb.Address = EndianUtils.LtoB32(pos);
+            cbw.Cbwcb.Length = EndianUtils.LtoB16((ushort)count);
 
-            if (!RKU_Write(StructToBytes(cbw), (uint)Marshal.SizeOf<CBW>()))
+            byte[] cbwBytes = new byte[Marshal.SizeOf<Cbw>()];
+            MemoryMarshal.Write(cbwBytes, in cbw);
+            if (!Write(cbwBytes))
                 return RKCommConstants.ERR_DEVICE_WRITE_FAILED;
 
-            byte[] cswBytes = new byte[Marshal.SizeOf<CSW>()];
-            if (!RKU_Read(cswBytes, (uint)cswBytes.Length))
+            byte[] cswBytes = new byte[Marshal.SizeOf<Csw>()];
+            if (!Read(cswBytes))
                 return RKCommConstants.ERR_DEVICE_READ_FAILED;
 
-            var csw = BytesToStruct<CSW>(cswBytes);
-            if (!UFI_CHECK_SIGN(cbw, csw))
+            var csw = MemoryMarshal.Read<Csw>(cswBytes);
+            if (!UfiCheckSign(cbw, csw))
                 return RKCommConstants.ERR_CMD_NOTMATCH;
 
-            if (csw.ucCSWStatus == 1)
+            if (csw.Status == 1)
                 return RKCommConstants.ERR_FOUND_BAD_BLOCK;
 
             return RKCommConstants.ERR_SUCCESS;

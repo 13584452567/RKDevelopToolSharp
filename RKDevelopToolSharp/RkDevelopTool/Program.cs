@@ -84,24 +84,24 @@ namespace RkDevelopTool.CLI
             int count = scanner.Search(0xFF);
             if (count == 0 || index >= count) return null;
 
-            if (scanner.GetDevice(out STRUCT_RKDEVICE_DESC desc, index))
+            if (scanner.GetDevice(out RkDeviceDesc desc, index))
             {
                 RKDevice device = new RKDevice(desc);
-                RKUsbComm comm = new RKUsbComm(desc, null, out bool bRet);
-                if (!bRet) return null;
+                RKUsbComm comm = new RKUsbComm(desc, null, out bool success);
+                if (!success) return null;
                 device.SetObject(null, comm, null);
-                device.CallBackPointer = ProgressInfoProc;
+                device.ProgressPromptCallback = ProgressInfoProc;
                 return device;
             }
             return null;
         }
 
-        static void ProgressInfoProc(uint deviceLayer, ENUM_PROGRESS_PROMPT promptID, long totalValue, long currentValue, ENUM_CALL_STEP emCall)
+        static void ProgressInfoProc(uint deviceLayer, ProgressPrompt promptId, long totalValue, long currentValue, CallStep step)
         {
-            string strInfo = promptID.ToString();
+            string info = promptId.ToString();
             int percent = totalValue > 0 ? (int)(currentValue * 100 / totalValue) : 0;
-            Console.Write($"\r{strInfo}: {percent}% ({currentValue}/{totalValue})");
-            if (emCall == ENUM_CALL_STEP.CALL_LAST) Console.WriteLine("\nDone.");
+            Console.Write($"\r{info}: {percent}% ({currentValue}/{totalValue})");
+            if (step == CallStep.Last) Console.WriteLine("\nDone.");
         }
 
         static void ListDevices()
@@ -116,10 +116,10 @@ namespace RkDevelopTool.CLI
 
             for (int i = 0; i < count; i++)
             {
-                if (scanner.GetDevice(out STRUCT_RKDEVICE_DESC desc, i))
+                if (scanner.GetDevice(out RkDeviceDesc desc, i))
                 {
-                    string usbType = desc.emUsbType.ToString();
-                    Console.WriteLine($"DevNo={i + 1}\tVid=0x{desc.usVid:X4},Pid=0x{desc.usPid:X4},LocationID=0\t{usbType}");
+                    string usbType = desc.UsbType.ToString();
+                    Console.WriteLine($"DevNo={i + 1}\tVid=0x{desc.Vid:X4},Pid=0x{desc.Pid:X4},LocationID=0\t{usbType}");
                 }
             }
         }
@@ -177,7 +177,7 @@ namespace RkDevelopTool.CLI
             var dev = GetSelectedDevice();
             if (dev == null) { Console.WriteLine("Device not found."); return; }
             Console.WriteLine($"Resetting device with subcode {subcode}...");
-            dev.ResetDevice((RESET_SUBCODE)subcode);
+            dev.ResetDevice((ResetSubCode)subcode);
         }
 
         static void ReadFlashInfo()

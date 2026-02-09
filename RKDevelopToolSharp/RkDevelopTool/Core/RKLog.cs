@@ -2,11 +2,11 @@ using System.Text;
 
 namespace RkDevelopTool.Core
 {
-    public enum ENUM_FILE_STAT
+    public enum FileStatus
     {
-        STAT_NOT_EXIST = 0,
-        STAT_FILE,
-        STAT_DIR
+        NotExist = 0,
+        File,
+        Directory
     }
 
     public class RKLog
@@ -50,14 +50,11 @@ namespace RkDevelopTool.Core
             m_enable = enable;
         }
 
-        public bool SaveBuffer(string fileName, byte[] buffer, uint size)
+        public bool SaveBuffer(string fileName, ReadOnlySpan<byte> buffer)
         {
             try
             {
-                using (FileStream fs = new FileStream(fileName, FileMode.Create, FileAccess.Write))
-                {
-                    fs.Write(buffer, 0, (int)size);
-                }
+                File.WriteAllBytes(fileName, buffer.ToArray());
                 return true;
             }
             catch
@@ -66,10 +63,10 @@ namespace RkDevelopTool.Core
             }
         }
 
-        public void PrintBuffer(out string output, byte[] buffer, uint size, uint lineCount = 16)
+        public void PrintBuffer(out string output, ReadOnlySpan<byte> buffer, uint lineCount = 16)
         {
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < size; i++)
+            for (int i = 0; i < buffer.Length; i++)
             {
                 if (i % lineCount == 0 && i > 0)
                 {
@@ -97,7 +94,7 @@ namespace RkDevelopTool.Core
                 string dateStr = now.ToString("yyyy-MM-dd");
                 string fileName = Path.Combine(m_path, $"{m_name}{dateStr}.txt");
                 string timeStr = now.ToString("HH:mm:ss");
-                string entry = $"{timeStr}\t{text}\r\n";
+                string entry = $"{timeStr}\t{text}{Environment.NewLine}";
 
                 File.AppendAllText(fileName, entry);
                 return true;
@@ -108,17 +105,17 @@ namespace RkDevelopTool.Core
             }
         }
 
-        public static ENUM_FILE_STAT GetFileStat(string path)
+        public static FileStatus GetFileStat(string path)
         {
             if (File.Exists(path))
             {
-                return ENUM_FILE_STAT.STAT_FILE;
+                return FileStatus.File;
             }
             else if (Directory.Exists(path))
             {
-                return ENUM_FILE_STAT.STAT_DIR;
+                return FileStatus.Directory;
             }
-            return ENUM_FILE_STAT.STAT_NOT_EXIST;
+            return FileStatus.NotExist;
         }
     }
 }

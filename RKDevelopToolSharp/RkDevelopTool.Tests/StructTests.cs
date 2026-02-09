@@ -10,7 +10,7 @@ namespace RkDevelopTool.Tests
         [Fact]
         public void TestRKImageHeadSize()
         {
-            int size = Marshal.SizeOf<STRUCT_RKIMAGE_HEAD>();
+            int size = Marshal.SizeOf<RkImageHead>();
             // 4+2+4+4 + 7(RKTIME) + 4 + 4+4+4+4 + 61 = 102
             Assert.Equal(102, size);
         }
@@ -18,7 +18,7 @@ namespace RkDevelopTool.Tests
         [Fact]
         public void TestRKTimeSize()
         {
-            int size = Marshal.SizeOf<STRUCT_RKTIME>();
+            int size = Marshal.SizeOf<RkTime>();
             // ushort(2) + 5*byte(5) = 7
             Assert.Equal(7, size);
         }
@@ -26,7 +26,7 @@ namespace RkDevelopTool.Tests
         [Fact]
         public void TestCBWSize()
         {
-            int size = Marshal.SizeOf<CBW>();
+            int size = Marshal.SizeOf<Cbw>();
             // 4+4+4+1+1+1 + (1+1+4+1+2+7) = 31
             Assert.Equal(31, size);
         }

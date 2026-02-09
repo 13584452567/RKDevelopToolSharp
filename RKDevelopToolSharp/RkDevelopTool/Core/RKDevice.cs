@@ -8,74 +8,74 @@ namespace RkDevelopTool.Core
     {
         private ushort m_vid;
         private ushort m_pid;
-        private ENUM_RKDEVICE_TYPE m_device;
-        private ENUM_OS_TYPE m_os;
-        private ENUM_RKUSB_TYPE m_usb;
+        private RkDeviceType m_device;
+        private OsType m_os;
+        private RkUsbType m_usb;
         private ushort m_bcdUsb;
         private string m_layerName = string.Empty;
         private uint m_locationID;
-        private ProgressPromptCB? m_callBackProc;
-        private RKLog? m_pLog;
-        private RKComm? m_pComm;
-        private RKImage? m_pImage;
-        private STRUCT_FLASH_INFO m_flashInfo;
-        private bool m_bEmmc;
-        private bool m_bDirectLba;
-        private bool m_bFirst4mAccess;
-        private static readonly string[] szManufName = { "SAMSUNG", "TOSHIBA", "HYNIX", "INFINEON", "MICRON", "RENESAS", "ST", "INTEL" };
+        private ProgressPromptCallback? m_progressPromptCallback;
+        private RKLog? m_log;
+        private RKComm? m_comm;
+        private RKImage? m_image;
+        private FlashInfo m_flashInfo;
+        private bool m_isEmmc;
+        private bool m_isDirectLba;
+        private bool m_isFirst4mAccess;
+        private static readonly string[] ManufNames = { "SAMSUNG", "TOSHIBA", "HYNIX", "INFINEON", "MICRON", "RENESAS", "ST", "INTEL" };
         public ushort VendorID { get => m_vid; set => m_vid = value; }
         public ushort ProductID { get => m_pid; set => m_pid = value; }
-        public ENUM_RKDEVICE_TYPE DeviceType { get => m_device; set => m_device = value; }
-        public ENUM_RKUSB_TYPE UsbType { get => m_usb; set => m_usb = value; }
+        public RkDeviceType DeviceType { get => m_device; set => m_device = value; }
+        public RkUsbType UsbType { get => m_usb; set => m_usb = value; }
         public string LayerName { get => m_layerName; set => m_layerName = value; }
         public uint LocationID { get => m_locationID; set => m_locationID = value; }
         public ushort BcdUsb { get => m_bcdUsb; set => m_bcdUsb = value; }
-        public ENUM_OS_TYPE OsType { get => m_os; set => m_os = value; }
-        public RKLog? LogObjectPointer => m_pLog;
-        public RKComm? CommObjectPointer => m_pComm;
-        public ProgressPromptCB? CallBackPointer { set => m_callBackProc = value; }
+        public OsType OsType { get => m_os; set => m_os = value; }
+        public RKLog? LogObjectPointer => m_log;
+        public RKComm? CommObjectPointer => m_comm;
+        public ProgressPromptCallback? ProgressPromptCallback { set => m_progressPromptCallback = value; }
 
         public void Dispose()
         {
-            if (m_pComm != null)
+            if (m_comm != null)
             {
-                m_pComm.Dispose();
-                m_pComm = null;
+                m_comm.Dispose();
+                m_comm = null;
             }
         }
 
-        public RKDevice(STRUCT_RKDEVICE_DESC device)
+        public RKDevice(RkDeviceDesc device)
         {
-            m_vid = device.usVid;
-            m_pid = device.usPid;
-            m_bcdUsb = device.usbcdUsb;
-            m_locationID = device.uiLocationID;
-            m_usb = device.emUsbType;
-            m_device = device.emDeviceType;
+            m_vid = device.Vid;
+            m_pid = device.Pid;
+            m_bcdUsb = device.UsbcdUsb;
+            m_locationID = device.LocationId;
+            m_usb = device.UsbType;
+            m_device = device.DeviceType;
             m_layerName = GetLayerString(m_locationID);
 
-            m_flashInfo = new STRUCT_FLASH_INFO();
-            m_flashInfo.usPhyBlokcPerIDB = 1;
+            m_flashInfo = new FlashInfo();
+            m_flashInfo.PhyBlockPerIdb = 1;
         }
 
         /// <summary>
         /// 获取层级名称字符串
         /// </summary>
-        public string GetLayerString(uint dwLocationID)
+        public string GetLayerString(uint locationId)
         {
-            return $"{(dwLocationID >> 8)}-{(dwLocationID & 0xff)}";
+            return $"{(locationId >> 8)}-{(locationId & 0xff)}";
         }
 
         /// <summary>
         /// 设置设备运行所需的组件
         /// </summary>
-        public bool SetObject(RKImage? pImage, RKComm? pComm, RKLog? pLog)
+        public bool SetObject(RKImage? image, RKComm? comm, RKLog? log)
         {
-            if (pComm == null) return false;
-            m_pImage = pImage;
-            m_pComm = pComm;
-            m_pLog = pLog;
-            m_os = m_pImage?.OsType ?? ENUM_OS_TYPE.RK_OS;
+            if (comm == null) return false;
+            m_image = image;
+            m_comm = comm;
+            m_log = log;
+            m_os = m_image?.OsType ?? OsType.RkOs;
             return true;
         }
 
@@ -84,42 +84,42 @@ namespace RkDevelopTool.Core
         /// </summary>
         public int DownloadBoot()
         {
-            if (m_pImage?.m_bootObject == null) return -1;
-            var boot = m_pImage.m_bootObject;
+            if (m_image?.BootObject == null) return -1;
+            var boot = m_image.BootObject;
 
             for (byte i = 0; i < boot.Entry471Count; i++)
             {
-                if (!boot.GetEntryProperty(ENUM_RKBOOTENTRY.ENTRY471, i, out uint dwSize, out uint dwDelay, out string name))
+                if (!boot.GetEntryProperty(RkBootEntryType.Entry471, i, out uint size, out uint delay, out string name))
                     return -2;
-                if (dwSize > 0)
+                if (size > 0)
                 {
-                    byte[]? pBuffer = boot.GetEntryData(ENUM_RKBOOTENTRY.ENTRY471, i);
-                    if (pBuffer == null) return -3;
-                    if (!Boot_VendorRequest(0x0471, pBuffer, dwSize)) return -4;
-                    if (dwDelay > 0) Thread.Sleep((int)dwDelay);
+                    byte[]? buffer = boot.GetEntryData(RkBootEntryType.Entry471, i);
+                    if (buffer == null) return -3;
+                    if (!Boot_VendorRequest(0x0471, buffer, size)) return -4;
+                    if (delay > 0) Thread.Sleep((int)delay);
                 }
             }
 
             for (byte i = 0; i < boot.Entry472Count; i++)
             {
-                if (!boot.GetEntryProperty(ENUM_RKBOOTENTRY.ENTRY472, i, out uint dwSize, out uint dwDelay, out string name))
+                if (!boot.GetEntryProperty(RkBootEntryType.Entry472, i, out uint size, out uint delay, out string name))
                     return -2;
-                if (dwSize > 0)
+                if (size > 0)
                 {
-                    byte[]? pBuffer = boot.GetEntryData(ENUM_RKBOOTENTRY.ENTRY472, i);
-                    if (pBuffer == null) return -3;
-                    if (!Boot_VendorRequest(0x0472, pBuffer, dwSize)) return -4;
-                    if (dwDelay > 0) Thread.Sleep((int)dwDelay);
+                    byte[]? buffer = boot.GetEntryData(RkBootEntryType.Entry472, i);
+                    if (buffer == null) return -3;
+                    if (!Boot_VendorRequest(0x0472, buffer, size)) return -4;
+                    if (delay > 0) Thread.Sleep((int)delay);
                 }
             }
             Thread.Sleep(1000); // 等待设备重启并初始化
             return 0;
         }
 
-        private bool Boot_VendorRequest(uint requestCode, byte[] pBuffer, uint dwDataSize)
+        private bool Boot_VendorRequest(uint requestCode, byte[] buffer, uint size)
         {
-            int iRet = m_pComm?.RKU_DeviceRequest(requestCode, pBuffer, dwDataSize) ?? -1;
-            return iRet == RKCommConstants.ERR_SUCCESS;
+            int ret = m_comm?.DeviceRequest(requestCode, buffer) ?? -1;
+            return ret == RKCommConstants.ERR_SUCCESS;
         }
 
         /// <summary>
@@ -127,40 +127,40 @@ namespace RkDevelopTool.Core
         /// </summary>
         public bool TestDevice()
         {
-            int iResult = -1;
-            uint dwTotal = 0, dwCurrent = 0;
-            ENUM_CALL_STEP emCallStep = ENUM_CALL_STEP.CALL_FIRST;
+            int result = -1;
+            uint total = 0, current = 0;
+            CallStep callStep = CallStep.First;
             
             do
             {
-                int iTryCount = 3;
-                while (iTryCount > 0)
+                int tryCount = 3;
+                while (tryCount > 0)
                 {
-                    iResult = m_pComm?.RKU_TestDeviceReady(out dwTotal, out dwCurrent) ?? -1;
-                    if (iResult == RKCommConstants.ERR_SUCCESS || iResult == RKCommConstants.ERR_DEVICE_UNREADY)
+                    result = m_comm?.TestDeviceReady(out total, out current) ?? -1;
+                    if (result == RKCommConstants.ERR_SUCCESS || result == RKCommConstants.ERR_DEVICE_UNREADY)
                         break;
-                    iTryCount--;
+                    tryCount--;
                     Thread.Sleep(1000);
                 }
                 
-                if (iResult == RKCommConstants.ERR_SUCCESS)
+                if (result == RKCommConstants.ERR_SUCCESS)
                 {
-                    if (emCallStep == ENUM_CALL_STEP.CALL_MIDDLE)
+                    if (callStep == CallStep.Middle)
                     {
-                        m_callBackProc?.Invoke(m_locationID, ENUM_PROGRESS_PROMPT.TESTDEVICE_PROGRESS, 100, 100, ENUM_CALL_STEP.CALL_LAST);
+                        m_progressPromptCallback?.Invoke(m_locationID, ProgressPrompt.TestDevice, 100, 100, CallStep.Last);
                     }
                     break;
                 }
 
-                if (iResult == RKCommConstants.ERR_DEVICE_UNREADY)
+                if (result == RKCommConstants.ERR_DEVICE_UNREADY)
                 {
-                    m_callBackProc?.Invoke(m_locationID, ENUM_PROGRESS_PROMPT.TESTDEVICE_PROGRESS, dwTotal, dwCurrent, emCallStep);
-                    emCallStep = ENUM_CALL_STEP.CALL_MIDDLE;
+                    m_progressPromptCallback?.Invoke(m_locationID, ProgressPrompt.TestDevice, total, current, callStep);
+                    callStep = CallStep.Middle;
                     Thread.Sleep(1000);
                 }
                 else return false;
 
-            } while (iResult == RKCommConstants.ERR_DEVICE_UNREADY);
+            } while (result == RKCommConstants.ERR_DEVICE_UNREADY);
 
             return true;
         }
@@ -170,8 +170,8 @@ namespace RkDevelopTool.Core
         /// </summary>
         public bool ResetDevice()
         {
-            int iRet = m_pComm?.RKU_ResetDevice() ?? -1;
-            return iRet == RKCommConstants.ERR_SUCCESS || iRet == -2 || iRet == -4;
+            int ret = m_comm?.ResetDevice() ?? -1;
+            return ret == RKCommConstants.ERR_SUCCESS || ret == -2 || ret == -4;
         }
 
         /// <summary>
@@ -179,8 +179,8 @@ namespace RkDevelopTool.Core
         /// </summary>
         public bool PowerOffDevice()
         {
-            int iRet = m_pComm?.RKU_ResetDevice(RESET_SUBCODE.RST_POWEROFF_SUBCODE) ?? -1;
-            return iRet == RKCommConstants.ERR_SUCCESS;
+            int ret = m_comm?.ResetDevice(ResetSubCode.PowerOff) ?? -1;
+            return ret == RKCommConstants.ERR_SUCCESS;
         }
 
         /// <summary>
@@ -189,30 +189,30 @@ namespace RkDevelopTool.Core
         public bool CheckChip()
         {
             byte[] chipInfo = new byte[16];
-            int iRet = m_pComm?.RKU_ReadChipInfo(chipInfo) ?? -1;
-            if (iRet != RKCommConstants.ERR_SUCCESS) return false;
+            int ret = m_comm?.ReadChipInfo(chipInfo) ?? -1;
+            if (ret != RKCommConstants.ERR_SUCCESS) return false;
 
-            uint chipId = BitConverter.ToUInt32(chipInfo, 0);
-            ENUM_RKDEVICE_TYPE curDeviceType = ENUM_RKDEVICE_TYPE.RKNONE_DEVICE;
+            uint chipId = BitConverter.ToUInt32(chipInfo);
+            RkDeviceType curDeviceType = RkDeviceType.None;
 
             if (chipId == (uint)m_device) return true;
             
             switch (chipId)
             {
-                case 0x524B3237: curDeviceType = ENUM_RKDEVICE_TYPE.RK27_DEVICE; break;
-                case 0x32373341: curDeviceType = ENUM_RKDEVICE_TYPE.RKCAYMAN_DEVICE; break;
-                case 0x524B3238: curDeviceType = ENUM_RKDEVICE_TYPE.RK28_DEVICE; break;
-                case 0x32383158: curDeviceType = ENUM_RKDEVICE_TYPE.RK281X_DEVICE; break;
-                case 0x32383242: curDeviceType = ENUM_RKDEVICE_TYPE.RKPANDA_DEVICE; break;
-                case 0x32393058: curDeviceType = ENUM_RKDEVICE_TYPE.RK29_DEVICE; break;
-                case 0x32393258: curDeviceType = ENUM_RKDEVICE_TYPE.RK292X_DEVICE; break;
-                case 0x33303041: curDeviceType = ENUM_RKDEVICE_TYPE.RK30_DEVICE; break;
-                case 0x33313041: curDeviceType = ENUM_RKDEVICE_TYPE.RK30B_DEVICE; break;
-                case 0x33313042: curDeviceType = ENUM_RKDEVICE_TYPE.RK31_DEVICE; break;
-                case 0x33323041: curDeviceType = ENUM_RKDEVICE_TYPE.RK32_DEVICE; break;
-                case 0x32363243: curDeviceType = ENUM_RKDEVICE_TYPE.RKSMART_DEVICE; break;
-                case 0x6E616E6F: curDeviceType = ENUM_RKDEVICE_TYPE.RKNANO_DEVICE; break;
-                case 0x4E4F5243: curDeviceType = ENUM_RKDEVICE_TYPE.RKCROWN_DEVICE; break;
+                case 0x524B3237: curDeviceType = RkDeviceType.Rk27; break;
+                case 0x32373341: curDeviceType = RkDeviceType.RkCayman; break;
+                case 0x524B3238: curDeviceType = RkDeviceType.Rk28; break;
+                case 0x32383158: curDeviceType = RkDeviceType.Rk281x; break;
+                case 0x32383242: curDeviceType = RkDeviceType.RkPanda; break;
+                case 0x32393058: curDeviceType = RkDeviceType.Rk29; break;
+                case 0x32393258: curDeviceType = RkDeviceType.Rk292x; break;
+                case 0x33303041: curDeviceType = RkDeviceType.Rk30; break;
+                case 0x33313041: curDeviceType = RkDeviceType.Rk30b; break;
+                case 0x33313042: curDeviceType = RkDeviceType.Rk31; break;
+                case 0x33323041: curDeviceType = RkDeviceType.Rk32; break;
+                case 0x32363243: curDeviceType = RkDeviceType.RkSmart; break;
+                case 0x6E616E6F: curDeviceType = RkDeviceType.RkNano; break;
+                case 0x4E4F5243: curDeviceType = RkDeviceType.RkCrown; break;
             }
 
             return curDeviceType == m_device;
@@ -224,31 +224,29 @@ namespace RkDevelopTool.Core
         public bool GetFlashInfo()
         {
             byte[] infoBytes = new byte[512];
-            int iRet = m_pComm?.RKU_ReadFlashInfo(infoBytes, out uint uiRead) ?? -1;
-            if (iRet != RKCommConstants.ERR_SUCCESS) return false;
+            int ret = m_comm?.ReadFlashInfo(infoBytes, out uint bytesRead) ?? -1;
+            if (ret != RKCommConstants.ERR_SUCCESS) return false;
 
-            GCHandle handle = GCHandle.Alloc(infoBytes, GCHandleType.Pinned);
-            STRUCT_FLASHINFO_CMD cmd = Marshal.PtrToStructure<STRUCT_FLASHINFO_CMD>(handle.AddrOfPinnedObject());
-            handle.Free();
+            FlashInfoCmd cmd = MemoryMarshal.Read<FlashInfoCmd>(infoBytes);
 
-            if (cmd.usBlockSize == 0 || cmd.bPageSize == 0) return false;
+            if (cmd.BlockSize == 0 || cmd.PageSize == 0) return false;
 
-            m_flashInfo.szManufacturerName = cmd.bManufCode <= 7 ? szManufName[cmd.bManufCode] : "UNKNOWN";
-            m_flashInfo.uiFlashSize = cmd.uiFlashSize / 2 / 1024;
-            m_flashInfo.uiPageSize = (uint)cmd.bPageSize / 2;
-            m_flashInfo.usBlockSize = (ushort)(cmd.usBlockSize / 2);
-            m_flashInfo.bECCBits = cmd.bECCBits;
-            m_flashInfo.bAccessTime = cmd.bAccessTime;
-            m_flashInfo.uiBlockNum = m_flashInfo.uiFlashSize * 1024 / m_flashInfo.usBlockSize;
-            m_flashInfo.uiSectorPerBlock = cmd.usBlockSize;
-            m_flashInfo.bFlashCS = cmd.bFlashCS;
-            m_flashInfo.usValidSecPerBlock = (ushort)((cmd.usBlockSize / cmd.bPageSize) * 4);
+            m_flashInfo.ManufacturerName = cmd.ManufCode <= 7 ? ManufNames[cmd.ManufCode] : "UNKNOWN";
+            m_flashInfo.FlashSize = cmd.FlashSize / 2 / 1024;
+            m_flashInfo.PageSize = (uint)cmd.PageSize / 2;
+            m_flashInfo.BlockSize = (ushort)(cmd.BlockSize / 2);
+            m_flashInfo.EccBits = cmd.EccBits;
+            m_flashInfo.AccessTime = cmd.AccessTime;
+            m_flashInfo.BlockNum = m_flashInfo.FlashSize * 1024 / m_flashInfo.BlockSize;
+            m_flashInfo.SectorPerBlock = cmd.BlockSize;
+            m_flashInfo.FlashCs = cmd.FlashCs;
+            m_flashInfo.ValidSecPerBlock = (ushort)((cmd.BlockSize / cmd.PageSize) * 4);
 
             byte[] flashId = new byte[5];
-            iRet = m_pComm?.RKU_ReadFlashID(flashId) ?? -1;
-            if (iRet == RKCommConstants.ERR_SUCCESS)
+            ret = m_comm?.ReadFlashID(flashId) ?? -1;
+            if (ret == RKCommConstants.ERR_SUCCESS)
             {
-                m_bEmmc = BitConverter.ToUInt32(flashId, 0) == 0x434d4d45;
+                m_isEmmc = BitConverter.ToUInt32(flashId) == 0x434d4d45;
             }
 
             return true;
@@ -257,49 +255,49 @@ namespace RkDevelopTool.Core
         /// <summary>
         /// 执行带子代码请求的设备重置。
         /// </summary>
-        public int ResetDevice(RESET_SUBCODE dwSubCode = RESET_SUBCODE.RST_NONE_SUBCODE)
+        public int ResetDevice(ResetSubCode subCode = ResetSubCode.None)
         {
-            if (m_pComm == null) return -1;
-            return m_pComm.RKU_ResetDevice(dwSubCode);
+            if (m_comm == null) return -1;
+            return m_comm.ResetDevice(subCode);
         }
 
         /// <summary>
         /// 向设备指定 LBA 起始扇区写入文件内容。
         /// </summary>
-        public bool WriteLBA(uint uiBegin, string szFile)
+        public bool WriteLBA(uint begin, string file)
         {
-            if (m_pComm == null) return false;
-            if (!System.IO.File.Exists(szFile)) return false;
+            if (m_comm == null) return false;
+            if (!System.IO.File.Exists(file)) return false;
 
-            using (var fs = new System.IO.FileStream(szFile, System.IO.FileMode.Open, System.IO.FileAccess.Read))
+            using (var fs = new System.IO.FileStream(file, System.IO.FileMode.Open, System.IO.FileAccess.Read))
             {
-                long iFileSize = fs.Length;
-                long iTotalWrite = 0;
-                int nSectorSize = 512;
+                long fileSize = fs.Length;
+                long totalWrite = 0;
+                int sectorSize = 512;
                 int sectorsPerLoop = 128; 
-                byte[] pBuf = new byte[nSectorSize * sectorsPerLoop];
-                ENUM_CALL_STEP emCallStep = ENUM_CALL_STEP.CALL_FIRST;
+                byte[] buffer = new byte[sectorSize * sectorsPerLoop];
+                CallStep callStep = CallStep.First;
 
-                while (iTotalWrite < iFileSize)
+                while (totalWrite < fileSize)
                 {
-                    int bytesRead = fs.Read(pBuf, 0, pBuf.Length);
+                    int bytesRead = fs.Read(buffer, 0, buffer.Length);
                     if (bytesRead <= 0) break;
 
-                    uint uiLen = (uint)((bytesRead + 511) / 512);
-                    int iRet = m_pComm.RKU_WriteLBA(uiBegin, uiLen, pBuf);
-                    if (iRet != RKCommConstants.ERR_SUCCESS)
+                    uint len = (uint)((bytesRead + 511) / 512);
+                    int ret = m_comm.WriteLBA(begin, len, buffer);
+                    if (ret != RKCommConstants.ERR_SUCCESS)
                     {
-                        m_pLog?.Record($"Error: RKU_WriteLBA failed, err={iRet}");
+                        m_log?.Record($"Error: WriteLBA failed, err={ret}");
                         return false;
                     }
 
-                    uiBegin += uiLen;
-                    iTotalWrite += bytesRead;
+                    begin += len;
+                    totalWrite += bytesRead;
 
-                    m_callBackProc?.Invoke(m_locationID, ENUM_PROGRESS_PROMPT.DOWNLOADIMAGE_PROGRESS, iFileSize, iTotalWrite, emCallStep);
-                    emCallStep = ENUM_CALL_STEP.CALL_MIDDLE;
+                    m_progressPromptCallback?.Invoke(m_locationID, ProgressPrompt.DownloadImage, fileSize, totalWrite, callStep);
+                    callStep = CallStep.Middle;
                 }
-                m_callBackProc?.Invoke(m_locationID, ENUM_PROGRESS_PROMPT.DOWNLOADIMAGE_PROGRESS, iFileSize, iFileSize, ENUM_CALL_STEP.CALL_LAST);
+                m_progressPromptCallback?.Invoke(m_locationID, ProgressPrompt.DownloadImage, fileSize, fileSize, CallStep.Last);
             }
             return true;
         }
@@ -307,38 +305,38 @@ namespace RkDevelopTool.Core
         /// <summary>
         /// 从设备指定 LBA 扇区读取数据并保存到文件。
         /// </summary>
-        public bool ReadLBA(uint uiBegin, uint uiLen, string szFile)
+        public bool ReadLBA(uint begin, uint len, string file)
         {
-            if (m_pComm == null) return false;
+            if (m_comm == null) return false;
 
-            using (var fs = new System.IO.FileStream(szFile, System.IO.FileMode.Create, System.IO.FileAccess.Write))
+            using (var fs = new System.IO.FileStream(file, System.IO.FileMode.Create, System.IO.FileAccess.Write))
             {
-                uint uiTotalLen = uiLen;
-                uint uiReadLen = 0;
-                int nSectorSize = 512;
+                uint totalLen = len;
+                uint readLen = 0;
+                int sectorSize = 512;
                 int sectorsPerLoop = 128; 
-                byte[] pBuf = new byte[nSectorSize * sectorsPerLoop];
-                ENUM_CALL_STEP emCallStep = ENUM_CALL_STEP.CALL_FIRST;
+                byte[] buffer = new byte[sectorSize * sectorsPerLoop];
+                CallStep callStep = CallStep.First;
 
-                while (uiReadLen < uiTotalLen)
+                while (readLen < totalLen)
                 {
-                    uint uiStepLen = Math.Min(uiTotalLen - uiReadLen, (uint)sectorsPerLoop);
-                    int iRet = m_pComm.RKU_ReadLBA(uiBegin, uiStepLen, pBuf);
-                    if (iRet != RKCommConstants.ERR_SUCCESS)
+                    uint stepLen = Math.Min(totalLen - readLen, (uint)sectorsPerLoop);
+                    int ret = m_comm.ReadLBA(begin, stepLen, buffer);
+                    if (ret != RKCommConstants.ERR_SUCCESS)
                     {
-                        m_pLog?.Record($"Error: RKU_ReadLBA failed, err={iRet}");
+                        m_log?.Record($"Error: ReadLBA failed, err={ret}");
                         return false;
                     }
 
-                    fs.Write(pBuf, 0, (int)uiStepLen * 512);
+                    fs.Write(buffer, 0, (int)stepLen * 512);
 
-                    uiBegin += uiStepLen;
-                    uiReadLen += uiStepLen;
+                    begin += stepLen;
+                    readLen += stepLen;
 
-                    m_callBackProc?.Invoke(m_locationID, ENUM_PROGRESS_PROMPT.CHECKIMAGE_PROGRESS, (long)uiTotalLen * 512, (long)uiReadLen * 512, emCallStep);
-                    emCallStep = ENUM_CALL_STEP.CALL_MIDDLE;
+                    m_progressPromptCallback?.Invoke(m_locationID, ProgressPrompt.CheckImage, (long)totalLen * 512, (long)readLen * 512, callStep);
+                    callStep = CallStep.Middle;
                 }
-                m_callBackProc?.Invoke(m_locationID, ENUM_PROGRESS_PROMPT.CHECKIMAGE_PROGRESS, (long)uiTotalLen * 512, (long)uiReadLen * 512, ENUM_CALL_STEP.CALL_LAST);
+                m_progressPromptCallback?.Invoke(m_locationID, ProgressPrompt.CheckImage, (long)totalLen * 512, (long)readLen * 512, CallStep.Last);
             }
             return true;
         }
@@ -349,97 +347,97 @@ namespace RkDevelopTool.Core
         public string GetFlashInfoString()
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine($"Manufacturer: {m_flashInfo.szManufacturerName}");
-            sb.AppendLine($"Flash Size: {m_flashInfo.uiFlashSize} MB");
-            sb.AppendLine($"Block Size: {m_flashInfo.usBlockSize} KB");
-            sb.AppendLine($"Page Size: {m_flashInfo.uiPageSize} KB");
-            sb.AppendLine($"Sector Per Block: {m_flashInfo.uiSectorPerBlock}");
-            sb.AppendLine($"Block Num: {m_flashInfo.uiBlockNum}");
+            sb.AppendLine($"Manufacturer: {m_flashInfo.ManufacturerName}");
+            sb.AppendLine($"Flash Size: {m_flashInfo.FlashSize} MB");
+            sb.AppendLine($"Block Size: {m_flashInfo.BlockSize} KB");
+            sb.AppendLine($"Page Size: {m_flashInfo.PageSize} KB");
+            sb.AppendLine($"Sector Per Block: {m_flashInfo.SectorPerBlock}");
+            sb.AppendLine($"Block Num: {m_flashInfo.BlockNum}");
             return sb.ToString();
         }
 
         /// <summary>
         /// 擦除全片
         /// </summary>
-        public int EraseAllBlocks(bool force_block_erase = false)
+        public int EraseAllBlocks(bool forceBlockErase = false)
         {
             ReadCapability();
-            if (!force_block_erase && (m_bEmmc || m_bDirectLba))
+            if (!forceBlockErase && (m_isEmmc || m_isDirectLba))
             {
                 if (!EraseEmmc()) return -1;
                 return 0;
             }
 
-            int iCSIndex = 0;
-            byte bCSCount = 0;
-            for (int i = 0; i < 8; i++) if ((m_flashInfo.bFlashCS & (1 << i)) != 0) bCSCount++;
+            int csIndex = 0;
+            byte csCount = 0;
+            for (int i = 0; i < 8; i++) if ((m_flashInfo.FlashCs & (1 << i)) != 0) csCount++;
 
-            ENUM_CALL_STEP emCallStep = ENUM_CALL_STEP.CALL_FIRST;
+            CallStep callStep = CallStep.First;
             for (byte i = 0; i < 8; i++)
             {
-                if ((m_flashInfo.bFlashCS & (1 << i)) != 0)
+                if ((m_flashInfo.FlashCs & (1 << i)) != 0)
                 {
-                    uint uiBlockCount = m_flashInfo.uiBlockNum;
-                    uint iErasePos = 0;
-                    int iEraseTimes = 0;
-                    while (uiBlockCount > 0)
+                    uint blockCount = m_flashInfo.BlockNum;
+                    uint erasePos = 0;
+                    int eraseTimes = 0;
+                    while (blockCount > 0)
                     {
-                        uint iEraseBlockNum = Math.Min(uiBlockCount, (uint)RKCommConstants.MAX_ERASE_BLOCKS);
-                        int iRet = m_pComm?.RKU_EraseBlock(i, iErasePos, iEraseBlockNum, (byte)USB_OPERATION_CODE.ERASE_FORCE) ?? -1;
-                        if (iRet != RKCommConstants.ERR_SUCCESS && iRet != RKCommConstants.ERR_FOUND_BAD_BLOCK) return -1;
+                        uint eraseBlockNum = Math.Min(blockCount, (uint)RKCommConstants.MAX_ERASE_BLOCKS);
+                        int ret = m_comm?.EraseBlock(i, erasePos, eraseBlockNum, (byte)UsbOperationCode.EraseForce) ?? -1;
+                        if (ret != RKCommConstants.ERR_SUCCESS && ret != RKCommConstants.ERR_FOUND_BAD_BLOCK) return -1;
 
-                        iErasePos += iEraseBlockNum;
-                        uiBlockCount -= iEraseBlockNum;
-                        iEraseTimes++;
-                        if (iEraseTimes % 8 == 0)
+                        erasePos += eraseBlockNum;
+                        blockCount -= eraseBlockNum;
+                        eraseTimes++;
+                        if (eraseTimes % 8 == 0)
                         {
-                            m_callBackProc?.Invoke(m_locationID, ENUM_PROGRESS_PROMPT.ERASEFLASH_PROGRESS, (long)m_flashInfo.uiBlockNum * bCSCount, (long)iCSIndex * m_flashInfo.uiBlockNum + iErasePos, emCallStep);
-                            emCallStep = ENUM_CALL_STEP.CALL_MIDDLE;
+                            m_progressPromptCallback?.Invoke(m_locationID, ProgressPrompt.EraseFlash, (long)m_flashInfo.BlockNum * csCount, (long)csIndex * m_flashInfo.BlockNum + erasePos, callStep);
+                            callStep = CallStep.Middle;
                         }
                     }
-                    iCSIndex++;
+                    csIndex++;
                 }
             }
-            m_callBackProc?.Invoke(m_locationID, ENUM_PROGRESS_PROMPT.ERASEFLASH_PROGRESS, (long)m_flashInfo.uiBlockNum * bCSCount, (long)iCSIndex * m_flashInfo.uiBlockNum, ENUM_CALL_STEP.CALL_LAST);
+            m_progressPromptCallback?.Invoke(m_locationID, ProgressPrompt.EraseFlash, (long)m_flashInfo.BlockNum * csCount, (long)csIndex * m_flashInfo.BlockNum, CallStep.Last);
             return 0;
         }
 
         private bool EraseEmmc()
         {
-            uint uiTotalCount = m_flashInfo.uiFlashSize * 2 * 1024;
-            uint uiCount = uiTotalCount;
-            uint uiSectorOffset = 0;
-            uint uiEraseSize = 1024 * 32;
-            int iLoopTimes = 0;
-            ENUM_CALL_STEP emCallStep = ENUM_CALL_STEP.CALL_FIRST;
+            uint totalCount = m_flashInfo.FlashSize * 2 * 1024;
+            uint count = totalCount;
+            uint sectorOffset = 0;
+            uint eraseSize = 1024 * 32;
+            int loopTimes = 0;
+            CallStep callStep = CallStep.First;
 
-            while (uiCount > 0)
+            while (count > 0)
             {
-                uint uiEraseCount = Math.Min(uiCount, uiEraseSize);
-                int iRet = m_pComm?.RKU_EraseLBA(uiSectorOffset, uiEraseCount) ?? -1;
-                if (iRet != RKCommConstants.ERR_SUCCESS) return false;
+                uint eraseCount = Math.Min(count, eraseSize);
+                int ret = m_comm?.EraseLBA(sectorOffset, eraseCount) ?? -1;
+                if (ret != RKCommConstants.ERR_SUCCESS) return false;
 
-                uiCount -= uiEraseCount;
-                uiSectorOffset += uiEraseCount;
-                iLoopTimes++;
-                if (iLoopTimes % 8 == 0)
+                count -= eraseCount;
+                sectorOffset += eraseCount;
+                loopTimes++;
+                if (loopTimes % 8 == 0)
                 {
-                    m_callBackProc?.Invoke(m_locationID, ENUM_PROGRESS_PROMPT.ERASEFLASH_PROGRESS, uiTotalCount, uiSectorOffset, emCallStep);
-                    emCallStep = ENUM_CALL_STEP.CALL_MIDDLE;
+                    m_progressPromptCallback?.Invoke(m_locationID, ProgressPrompt.EraseFlash, totalCount, sectorOffset, callStep);
+                    callStep = CallStep.Middle;
                 }
             }
-            m_callBackProc?.Invoke(m_locationID, ENUM_PROGRESS_PROMPT.ERASEFLASH_PROGRESS, uiTotalCount, uiTotalCount, ENUM_CALL_STEP.CALL_LAST);
+            m_progressPromptCallback?.Invoke(m_locationID, ProgressPrompt.EraseFlash, totalCount, totalCount, CallStep.Last);
             return true;
         }
 
         private bool ReadCapability()
         {
             byte[] data = new byte[8];
-            int ret = m_pComm?.RKU_ReadCapability(data) ?? -1;
+            int ret = m_comm?.ReadCapability(data) ?? -1;
             if (ret != RKCommConstants.ERR_SUCCESS) return false;
 
-            m_bDirectLba = (data[0] & 0x1) != 0;
-            m_bFirst4mAccess = (data[0] & 0x4) != 0;
+            m_isDirectLba = (data[0] & 0x1) != 0;
+            m_isFirst4mAccess = (data[0] & 0x4) != 0;
             return true;
         }
     }

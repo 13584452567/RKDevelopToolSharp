@@ -2,12 +2,12 @@ namespace RkDevelopTool.Utils
 {
     public static class CRCUtils
     {
-        public static ushort CRC_CCITT(byte[] p, uint calculateNumber)
+        public static ushort CRC_CCITT(ReadOnlySpan<byte> p)
         {
             ushort crc = 0xFFFF;
-            for (uint i = 0; i < calculateNumber; i++)
+            foreach (byte b in p)
             {
-                crc = (ushort)((crc << 8) ^ crc16_table[(crc >> 8) ^ p[i]]);
+                crc = (ushort)((crc << 8) ^ crc16_table[(crc >> 8) ^ b]);
             }
             return crc;
         }
@@ -48,12 +48,12 @@ namespace RkDevelopTool.Utils
             0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0
         };
 
-        public static uint CRC_32(byte[] pData, uint ulSize)
+        public static uint CRC_32(ReadOnlySpan<byte> pData)
         {
             uint nAccum = 0;
-            for (uint i = 0; i < ulSize; i++)
+            foreach (byte b in pData)
             {
-                nAccum = (nAccum << 8) ^ gTable_Crc32[(nAccum >> 24) ^ pData[i]];
+                nAccum = (nAccum << 8) ^ gTable_Crc32[(nAccum >> 24) ^ b];
             }
             return nAccum;
         }
